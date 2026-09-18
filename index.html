@@ -141,18 +141,14 @@ function card(st, label){
     const f = document.createElement("span");
     f.className = "fav"; f.setAttribute("role","button");
     f.title = "Favorita"; f.textContent = isFav(st) ? "★" : "☆";
-    f.onclick = e => { e.stopPropagation(); toggleFav(st); };
+    f.onclick = e => { e.stopPropagation(); toggleFav(st); f.textContent = isFav(st) ? "★" : "☆"; };
     b.append(f);
   }
   return b;
 }
-const isFav = st => favs.some(f => f.stationuuid === st.stationuuid);
-function toggleFav(st){
-  favs = isFav(st) ? favs.filter(f => f.stationuuid !== st.stationuuid)
-                   : [...favs, {stationuuid:st.stationuuid,name:st.name,url_resolved:st.url_resolved,favicon:st.favicon,country:st.country,codec:st.codec,bitrate:st.bitrate}];
-  store("radio_favs", favs); renderFavs();
-  if (isFav(st)) addExtra(st);
-}
+// La estrella guarda la emisora directamente en el apartado Emisoras
+const isFav = st => extra.some(e => e.stationuuid === st.stationuuid);
+function toggleFav(st){ isFav(st) ? delExtra(st) : addExtra(st); }
 const slim = st => ({stationuuid:st.stationuuid,name:st.name,url_resolved:st.url_resolved,favicon:st.favicon,country:st.country,codec:st.codec,bitrate:st.bitrate});
 // Pasa una emisora (favorita o buscada) al apartado Emisoras, sin repetirla
 function addExtra(st){
@@ -316,6 +312,12 @@ window.addEventListener("popstate", () => {
   clearTimeout(backTimer);
   backTimer = setTimeout(() => { if (wantPlay) guardBack(); }, 4000);
 });
+
+// Las favoritas antiguas pasan a Emisoras y el apartado Favoritas desaparece
+if (favs.length){
+  favs.forEach(st => { if (!extra.some(e => e.stationuuid === st.stationuuid)) extra.push(st); });
+  store("radio_extra", extra); favs = []; store("radio_favs", favs);
+}
 
 renderPresets(); renderFavs();
 $("year").textContent = new Date().getFullYear();
