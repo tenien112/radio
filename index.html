@@ -291,7 +291,7 @@ document.addEventListener("visibilitychange", () => {
   if (wantPlay && audio.paused) reconnect();
 });
 audio.addEventListener("pause", () => {
-  if (wantPlay && !tuning && document.hidden && Date.now() - hiddenAt < 3000 && !audio.src.startsWith("data:")){
+  if (wantPlay && !tuning && document.hidden && !audio.src.startsWith("data:")){  // pausa del sistema, no tuya: seguimos
     audio.play().catch(() => reconnect());
   }
 });
