@@ -240,7 +240,7 @@ function showStation(st){
 $("play").onclick = () => {
   if (!current) return;
   if (audio.paused){ wantPlay = true; audio.src = current.url_resolved; audio.play().then(()=>setMsg("")).catch(()=>setMsg("Esta emisora no responde. Prueba otra.")); }  // reconecta en directo
-  else { wantPlay = false; audio.pause(); audio.removeAttribute("src"); audio.load(); }
+  else { wantPlay = false; releaseBack(); audio.pause(); audio.removeAttribute("src"); audio.load(); }
 };
 audio.onplaying = () => { if (audio.src.startsWith("data:")) return; $("play").textContent = "❚❚"; $("play").ariaLabel = "Pausar"; };
 audio.onpause = audio.onemptied = () => { if (audio.src.startsWith("data:")) return; $("play").textContent = "▶"; $("play").ariaLabel = "Reproducir"; };
@@ -297,11 +297,25 @@ audio.addEventListener("pause", () => {
 });
 if ("mediaSession" in navigator){
   const resume = () => { if (!current) return; wantPlay = true; audio.src = current.url_resolved; audio.play().catch(() => {}); };
-  const stop = () => { wantPlay = false; audio.pause(); };
+  const stop = () => { wantPlay = false; releaseBack(); audio.pause(); };
   for (const [a, f] of [["play", resume], ["pause", stop], ["stop", stop]]){
     try{ navigator.mediaSession.setActionHandler(a, f); }catch(e){}
   }
 }
+
+// Botón atrás de Android: cerraría la app y cortaría la radio.
+// Mientras suena, el primer "atrás" solo avisa; si pulsas otra vez en unos segundos, se cierra.
+let ignorePop = false, backTimer;
+function guardBack(){ if (!(history.state && history.state.radio)) history.pushState({radio: 1}, ""); }
+function releaseBack(){ clearTimeout(backTimer); if (history.state && history.state.radio){ ignorePop = true; history.back(); } }
+audio.addEventListener("playing", () => { if (!audio.src.startsWith("data:")) guardBack(); });
+window.addEventListener("popstate", () => {
+  if (ignorePop){ ignorePop = false; return; }
+  if (!wantPlay) return;
+  setMsg("Para seguir oyendo la radio usa el botón de inicio. Pulsa atrás otra vez para cerrarla.");
+  clearTimeout(backTimer);
+  backTimer = setTimeout(() => { if (wantPlay) guardBack(); }, 4000);
+});
 
 renderPresets(); renderFavs();
 $("year").textContent = new Date().getFullYear();
