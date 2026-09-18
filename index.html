@@ -183,6 +183,21 @@ function renderPresets(){
         play(r, b, i / (PRESETS.length - 1));
       }catch(e){ setMsg("No hay conexión con el directorio de emisoras. Revisa tu internet."); }
     };
+    // Estrella de las emisoras fijas: busca la emisora y la guarda en Favoritas
+    const f = document.createElement("span");
+    f.className = "fav"; f.setAttribute("role","button"); f.title = "Favorita";
+    const esFav = () => favs.some(x => x.presetName === name);
+    f.textContent = esFav() ? "★" : "☆";
+    f.onclick = async e => {
+      e.stopPropagation();
+      if (esFav()){ favs = favs.filter(x => x.presetName !== name); store("radio_favs", favs); renderFavs(); f.textContent = "☆"; return; }
+      try{
+        const r = await search(name, "ES");
+        if (!r.length) return setMsg("No encuentro " + name + " ahora mismo.");
+        favs = [...favs, {...slim(r[0]), presetName: name}]; store("radio_favs", favs); renderFavs(); f.textContent = "★";
+      }catch(err){ setMsg("No hay conexión con el directorio de emisoras. Revisa tu internet."); }
+    };
+    b.append(f);
     g.append(b);
   });
   extra.forEach(st => {
@@ -320,7 +335,7 @@ window.addEventListener("popstate", () => {
 });
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.09.18-3";
+const APP_VERSION = "2026.09.18-4";
 (() => {
   const prev = store("radio_version");
   store("radio_version", APP_VERSION);
