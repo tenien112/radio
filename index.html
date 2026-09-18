@@ -52,6 +52,7 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
 .st .fav{margin-left:auto;color:var(--warm);background:none;border:0;cursor:pointer;font-size:1.1rem;padding:0 2px}
 .toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 16px);transform:translate(-50%,-20px);max-width:92%;width:max-content;padding:14px 20px;border-radius:14px;background:var(--accent);color:#fff;font-weight:600;box-shadow:0 8px 28px rgba(0,0,0,.55);font-size:1rem;text-align:center;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:50}
 .toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.suave{background:var(--surface);color:var(--muted);font-weight:400;font-size:.85rem;padding:8px 14px;border:1px solid var(--line)}
 .st .del{color:var(--muted);cursor:pointer;font-size:1rem;padding:0 2px}
 
 .search{display:flex;gap:8px;margin-bottom:12px}
@@ -258,7 +259,7 @@ function setMsg(t){
   $("msg").textContent = t;
   const el = $("toast"); clearTimeout(toastTimer);
   if (!t){ el.classList.remove("show"); return; }
-  el.textContent = t; el.classList.add("show");
+  el.textContent = t; el.classList.remove("suave"); el.classList.add("show");
   if (!t.endsWith("…")) toastTimer = setTimeout(() => el.classList.remove("show"), 7000);  // los "Conectando…" se quedan hasta el siguiente aviso
 }
 
@@ -318,6 +319,20 @@ if (favs.length){
   favs.forEach(st => { if (!extra.some(e => e.stationuuid === st.stationuuid)) extra.push(st); });
   store("radio_extra", extra); favs = []; store("radio_favs", favs);
 }
+
+// Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
+const APP_VERSION = "2026.09.18-2";
+(() => {
+  const prev = store("radio_version");
+  store("radio_version", APP_VERSION);
+  const yaUsada = prev !== null || store("radio_vol") !== null;  // no avisar la primera vez que se instala
+  if (prev !== APP_VERSION && yaUsada){
+    const el = $("toast");
+    el.textContent = "RADIO-LORENZITO se ha actualizado";
+    el.classList.add("suave", "show");
+    toastTimer = setTimeout(() => el.classList.remove("show"), 4000);
+  }
+})();
 
 renderPresets(); renderFavs();
 $("year").textContent = new Date().getFullYear();
