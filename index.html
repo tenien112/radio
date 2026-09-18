@@ -147,9 +147,14 @@ function card(st, label){
   }
   return b;
 }
-// La estrella guarda la emisora directamente en el apartado Emisoras
-const isFav = st => extra.some(e => e.stationuuid === st.stationuuid);
-function toggleFav(st){ isFav(st) ? delExtra(st) : addExtra(st); }
+// La estrella marca la emisora como favorita (bloque Favoritas) y además la deja en Emisoras
+const isFav = st => favs.some(f => f.stationuuid === st.stationuuid);
+function toggleFav(st){
+  favs = isFav(st) ? favs.filter(f => f.stationuuid !== st.stationuuid) : [...favs, slim(st)];
+  store("radio_favs", favs); renderFavs();
+  if (isFav(st)) addExtra(st);
+  renderPresets();  // refresca las estrellas del bloque Emisoras
+}
 const slim = st => ({stationuuid:st.stationuuid,name:st.name,url_resolved:st.url_resolved,favicon:st.favicon,country:st.country,codec:st.codec,bitrate:st.bitrate});
 // Pasa una emisora (favorita o buscada) al apartado Emisoras, sin repetirla
 function addExtra(st){
@@ -314,14 +319,8 @@ window.addEventListener("popstate", () => {
   backTimer = setTimeout(() => { if (wantPlay) guardBack(); }, 4000);
 });
 
-// Las favoritas antiguas pasan a Emisoras y el apartado Favoritas desaparece
-if (favs.length){
-  favs.forEach(st => { if (!extra.some(e => e.stationuuid === st.stationuuid)) extra.push(st); });
-  store("radio_extra", extra); favs = []; store("radio_favs", favs);
-}
-
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.09.18-2";
+const APP_VERSION = "2026.09.18-3";
 (() => {
   const prev = store("radio_version");
   store("radio_version", APP_VERSION);
