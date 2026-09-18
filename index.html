@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radio</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2B0F2E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Radio">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#2B0F2E; --surface:#3D1A42; --line:#5A2E60;
+  --text:#F7EAF3; --muted:#B89AB5; --accent:#FF4FA3; --warm:#FFC857;
+  --font:"Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh}
+.wrap{max-width:560px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:clamp(2.6rem,11vw,4rem);font-weight:800;letter-spacing:-.04em;line-height:.9;margin:0 0 22px}
+button,input{font-family:inherit}
+button:focus-visible,input:focus-visible{outline:3px solid var(--warm);outline-offset:2px}
+
+/* Dial */
+.dial{position:relative;height:88px;background:var(--surface);border-radius:14px;overflow:hidden;margin-bottom:18px}
+.ticks{position:absolute;inset:0;background:repeating-linear-gradient(90deg,var(--line) 0 2px,transparent 2px 14px);opacity:.7;mask:linear-gradient(transparent 55%,#000 55%)}
+.needle{position:absolute;top:8px;bottom:8px;width:4px;background:var(--accent);border-radius:2px;left:6%;transition:left .6s cubic-bezier(.3,1.4,.5,1);box-shadow:0 0 18px var(--accent)}
+.now{position:absolute;left:16px;top:12px;right:16px;display:flex;align-items:center;gap:10px}
+.now img{width:34px;height:34px;border-radius:8px;object-fit:cover;background:var(--line)}
+.now .n{font-weight:600;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.now .s{font-size:.8rem;color:var(--muted)}
+
+/* Controls */
+.controls{display:flex;align-items:center;gap:14px;margin-bottom:26px}
+.play{width:64px;height:64px;border-radius:50%;border:0;background:var(--accent);color:#2B0F2E;font-size:1.6rem;cursor:pointer;flex:none}
+.play:disabled{opacity:.4;cursor:default}
+input[type=range]{flex:1;accent-color:var(--accent)}
+
+/* Presets */
+h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:26px}
+.st{display:flex;align-items:center;gap:8px;text-align:left;padding:12px;border:1px solid var(--line);background:transparent;color:var(--text);border-radius:10px;cursor:pointer;font-size:.95rem}
+.st:hover{border-color:var(--muted)}
+.st.on{border-color:var(--accent);background:var(--surface)}
+.st img{width:24px;height:24px;border-radius:5px;object-fit:cover;flex:none}
+.st .fav{margin-left:auto;color:var(--warm);background:none;border:0;cursor:pointer;font-size:1.1rem;padding:0 2px}
+
+.search{display:flex;gap:8px;margin-bottom:12px}
+.search input{flex:1;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:1rem}
+.search button{padding:0 18px;border-radius:10px;border:0;background:var(--text);color:var(--bg);font-weight:600;cursor:pointer}
+.msg{color:var(--muted);font-size:.9rem;min-height:1.2em;margin-bottom:10px}
+@media (prefers-reduced-motion:reduce){.needle{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Radio</h1>
+
+  <div class="dial" aria-hidden="true">
+    <div class="ticks"></div>
+    <div class="needle" id="needle"></div>
+  </div>
+  <div class="now" style="position:static;margin:-4px 0 16px">
+    <img id="nowImg" alt="">
+    <div style="min-width:0">
+      <div class="n" id="nowName">Elige una emisora</div>
+      <div class="s" id="nowInfo">Pulsa una de la lista o busca cualquier radio del mundo</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="play" id="play" disabled aria-label="Reproducir">▶</button>
+    <input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Volumen">
+  </div>
+
+  <h2>Emisoras</h2>
+  <div class="grid" id="presets"></div>
+
+  <h2 id="favTitle" hidden>Favoritas</h2>
+  <div class="grid" id="favs"></div>
+
+  <h2>Buscar emisora</h2>
+  <form class="search" id="form">
+    <input id="q" placeholder="Nombre, ciudad o estilo" autocomplete="off">
+    <button>Buscar</button>
+  </form>
+  <div class="msg" id="msg"></div>
+  <div class="grid" id="results"></div>
+</div>
+
+<audio id="audio" preload="none"></audio>
+
+<script>
+const PRESETS = ["Kiss FM","Cadena 100","Los 40","Europa FM","Cadena Dial","Rock FM","Cadena SER","COPE","Radio Nacional","Onda Cero","Hit FM","Loca FM"];
+const SERVERS = ["https://de1.api.radio-browser.info","https://de2.api.radio-browser.info","https://fi1.api.radio-browser.info"];
+const audio = document.getElementById("audio");
+const $ = id => document.getElementById(id);
+let current = null;
+
+function store(k,v){try{ if(v===undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k,JSON.stringify(v)); }catch(e){ return null; }}
+let favs = store("radio_favs") || [];
+audio.volume = store("radio_vol") ?? 0.8; $("vol").value = audio.volume;
+
+async function api(path){
+  for (const s of SERVERS){
+    try{ const r = await fetch(s + path); if (r.ok) return await r.json(); }catch(e){}
+  }
+  throw new Error("sin conexión");
+}
+async function search(name, country){
+  const p = new URLSearchParams({name, limit:"25", hidebroken:"true", order:"clickcount", reverse:"true"});
+  if (country) p.set("countrycode", country);
+  const list = await api("/json/stations/search?" + p);
+  // Evita flujos HLS y, si la página va por https, las emisiones http (el navegador las bloquea)
+  const secure = location.protocol === "https:";
+  return list.filter(s => s.url_resolved && !s.hls && (!secure || s.url_resolved.startsWith("https:")));
+}
+
+function card(st, label){
+  const b = document.createElement("button");
+  b.className = "st"; b.type = "button";
+  const img = document.createElement("img"); img.alt = ""; img.src = st?.favicon || "";
+  img.onerror = () => img.style.visibility = "hidden";
+  const t = document.createElement("span"); t.textContent = label || st.name;
+  b.append(img, t);
+  if (st){
+    const f = document.createElement("span");
+    f.className = "fav"; f.setAttribute("role","button");
+    f.title = "Favorita"; f.textContent = isFav(st) ? "★" : "☆";
+    f.onclick = e => { e.stopPropagation(); toggleFav(st); };
+    b.append(f);
+  }
+  return b;
+}
+const isFav = st => favs.some(f => f.stationuuid === st.stationuuid);
+function toggleFav(st){
+  favs = isFav(st) ? favs.filter(f => f.stationuuid !== st.stationuuid)
+                   : [...favs, {stationuuid:st.stationuuid,name:st.name,url_resolved:st.url_resolved,favicon:st.favicon,country:st.country,codec:st.codec,bitrate:st.bitrate}];
+  store("radio_favs", favs); renderFavs();
+}
+function renderFavs(){
+  const g = $("favs"); g.innerHTML = "";
+  $("favTitle").hidden = favs.length === 0;
+  favs.forEach(st => { const b = card(st); b.onclick = () => play(st, b); g.append(b); });
+}
+
+function renderPresets(){
+  const g = $("presets");
+  PRESETS.forEach((name,i) => {
+    const b = card(null, name);
+    b.onclick = async () => {
+      unlock();
+      setMsg("Sintonizando " + name + "…");
+      try{
+        const r = await search(name, "ES");
+        if (!r.length) return setMsg("No encuentro " + name + " ahora mismo. Prueba con el buscador.");
+        play(r, b, i / (PRESETS.length - 1));
+      }catch(e){ setMsg("No hay conexión con el directorio de emisoras. Revisa tu internet."); }
+    };
+    g.append(b);
+  });
+}
+
+// Los móviles solo dejan sonar audio si play() se llama justo al tocar.
+// Como la búsqueda tarda, "desbloqueamos" el reproductor con un silencio en el mismo toque.
+const SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+function unlock(){ try{ audio.src = SILENCE; audio.play().catch(()=>{}); }catch(e){} }
+
+let tuneId = 0;
+async function play(list, btn, pos){
+  unlock();
+  if (!Array.isArray(list)) list = [list];
+  const id = ++tuneId;
+  document.querySelectorAll(".st.on").forEach(x => x.classList.remove("on"));
+  btn?.classList.add("on");
+  $("needle").style.left = (6 + (pos ?? Math.random()) * 86) + "%";
+  // Prueba hasta 5 señales de la misma emisora hasta que una suene
+  for (const st of list.slice(0, 5)){
+    if (id !== tuneId) return;
+    showStation(st);
+    setMsg("Conectando con " + st.name.trim() + "…");
+    audio.src = st.url_resolved;
+    try{
+      await Promise.race([audio.play(), new Promise((_, no) => setTimeout(() => no(new Error("timeout")), 10000))]);
+      if (id === tuneId) setMsg("");
+      return;
+    }catch(e){
+      if (e.name === "NotAllowedError"){ setMsg("Pulsa ▶ para empezar a escuchar."); return; }
+    }
+  }
+  if (id === tuneId) setMsg("Esta emisora no emite ahora mismo. Prueba otra o búscala por nombre.");
+}
+
+function showStation(st){
+  current = st;
+  $("nowName").textContent = st.name.trim();
+  $("nowInfo").textContent = [st.country, st.codec, st.bitrate ? st.bitrate + " kbps" : ""].filter(Boolean).join(", ");
+  $("nowImg").src = st.favicon || "";
+  $("play").disabled = false;
+  if ("mediaSession" in navigator){
+    navigator.mediaSession.metadata = new MediaMetadata({title: st.name, artist: "Radio en directo", artwork: st.favicon ? [{src: st.favicon}] : []});
+  }
+}
+
+$("play").onclick = () => {
+  if (!current) return;
+  if (audio.paused){ audio.src = current.url_resolved; audio.play().then(()=>setMsg("")).catch(()=>setMsg("Esta emisora no responde. Prueba otra.")); }  // reconecta en directo
+  else { audio.pause(); audio.removeAttribute("src"); audio.load(); }
+};
+audio.onplaying = () => { if (audio.src.startsWith("data:")) return; $("play").textContent = "❚❚"; $("play").ariaLabel = "Pausar"; };
+audio.onpause = audio.onemptied = () => { if (audio.src.startsWith("data:")) return; $("play").textContent = "▶"; $("play").ariaLabel = "Reproducir"; };
+$("vol").oninput = e => { audio.volume = e.target.value; store("radio_vol", audio.volume); };
+
+$("form").onsubmit = async e => {
+  e.preventDefault();
+  const q = $("q").value.trim(); if (!q) return;
+  setMsg("Buscando…"); $("results").innerHTML = "";
+  try{
+    const r = await search(q);
+    setMsg(r.length ? r.length + " emisoras encontradas" : "Ninguna emisora coincide. Prueba con otro nombre.");
+    r.forEach(st => { const b = card(st); b.onclick = () => play(st, b); $("results").append(b); });
+  }catch(err){ setMsg("No hay conexión con el directorio de emisoras. Revisa tu internet."); }
+};
+function setMsg(t){ $("msg").textContent = t; }
+
+renderPresets(); renderFavs();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
