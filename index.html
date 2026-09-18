@@ -60,6 +60,8 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
 .sheet-title{font-weight:700;margin:2px 6px 14px;color:var(--text)}
 .sheet button{display:block;width:100%;text-align:left;padding:14px;margin:0 0 8px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text);font:inherit;font-size:1rem;cursor:pointer}
 .sheet button.danger{color:var(--accent);border-color:var(--accent)}
+.install{display:block;width:100%;margin:-6px 0 18px;padding:12px;border-radius:10px;border:1px solid var(--accent);background:transparent;color:var(--text);font:inherit;font-weight:600;cursor:pointer}
+.install[hidden]{display:none}
 .st .del{color:var(--muted);cursor:pointer;font-size:1rem;padding:0 2px}
 
 .search{display:flex;gap:8px;margin-bottom:12px}
@@ -73,6 +75,7 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
 <body>
 <div class="wrap">
   <h1>RADIO-LORENZITO</h1>
+  <button type="button" class="install" id="install" hidden>📲 Instalar RADIO-LORENZITO en el móvil</button>
 
   <div class="dial" aria-hidden="true">
     <div class="ticks"></div>
@@ -402,7 +405,7 @@ window.addEventListener("popstate", () => {
 });
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.09.18-5";
+const APP_VERSION = "2026.09.18-6";
 (() => {
   const prev = store("radio_version");
   store("radio_version", APP_VERSION);
@@ -414,6 +417,17 @@ const APP_VERSION = "2026.09.18-5";
     toastTimer = setTimeout(() => el.classList.remove("show"), 4000);
   }
 })();
+
+// Botón para instalar la app: Chrome no siempre lo ofrece solo en móviles nuevos
+let installEvt = null;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; $("install").hidden = false; });
+window.addEventListener("appinstalled", () => { $("install").hidden = true; installEvt = null; setMsg("RADIO-LORENZITO instalada"); });
+$("install").onclick = async () => {
+  if (installEvt){ installEvt.prompt(); try{ await installEvt.userChoice; }catch(e){} installEvt = null; $("install").hidden = true; return; }
+  setMsg("En iPhone: pulsa Compartir y después «Añadir a pantalla de inicio».");
+};
+const enApp = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !enApp) $("install").hidden = false;  // iPhone no avisa solo
 
 renderPresets(); renderFavs();
 $("year").textContent = new Date().getFullYear();
