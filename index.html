@@ -284,7 +284,17 @@ audio.addEventListener("playing", () => {
   if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
 });
 audio.addEventListener("pause", () => { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused"; });
-document.addEventListener("visibilitychange", () => { if (!document.hidden && wantPlay && audio.paused) reconnect(); });
+// Si el sistema pausa la radio justo al salir de la app, la volvemos a poner al momento
+let hiddenAt = 0;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden){ hiddenAt = Date.now(); return; }
+  if (wantPlay && audio.paused) reconnect();
+});
+audio.addEventListener("pause", () => {
+  if (wantPlay && !tuning && document.hidden && Date.now() - hiddenAt < 3000 && !audio.src.startsWith("data:")){
+    audio.play().catch(() => reconnect());
+  }
+});
 if ("mediaSession" in navigator){
   const resume = () => { if (!current) return; wantPlay = true; audio.src = current.url_resolved; audio.play().catch(() => {}); };
   const stop = () => { wantPlay = false; audio.pause(); };
