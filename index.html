@@ -53,6 +53,13 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
 .toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 16px);transform:translate(-50%,-20px);max-width:92%;width:max-content;padding:14px 20px;border-radius:14px;background:var(--accent);color:#fff;font-weight:600;box-shadow:0 8px 28px rgba(0,0,0,.55);font-size:1rem;text-align:center;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:50}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .toast.suave{background:var(--surface);color:var(--muted);font-weight:400;font-size:.85rem;padding:8px 14px;border:1px solid var(--line)}
+.st{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;z-index:60}
+.sheet[hidden]{display:none}
+.sheet-box{width:100%;max-width:480px;background:var(--surface);border-radius:16px 16px 0 0;padding:16px 14px calc(14px + env(safe-area-inset-bottom,0px))}
+.sheet-title{font-weight:700;margin:2px 6px 14px;color:var(--text)}
+.sheet button{display:block;width:100%;text-align:left;padding:14px;margin:0 0 8px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text);font:inherit;font-size:1rem;cursor:pointer}
+.sheet button.danger{color:var(--accent);border-color:var(--accent)}
 .st .del{color:var(--muted);cursor:pointer;font-size:1rem;padding:0 2px}
 
 .search{display:flex;gap:8px;margin-bottom:12px}
@@ -101,6 +108,7 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
   <footer class="copy">© <span id="year">2026</span> Lorenzo Moreno. Todos los derechos reservados.</footer>
 </div>
 
+<div class="sheet" id="sheet" hidden><div class="sheet-box"><div class="sheet-title" id="sheetTitle"></div><div id="sheetBtns"></div></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none"></audio>
 
@@ -113,7 +121,8 @@ let current = null;
 
 function store(k,v){try{ if(v===undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k,JSON.stringify(v)); }catch(e){ return null; }}
 let favs = store("radio_favs") || [];
-let extra = store("radio_extra") || [];  // emisoras añadidas al apartado Emisoras
+let extra = store("radio_extra") || [];
+let hidden = store("radio_hidden") || [];  // emisoras fijas que has borrado  // emisoras añadidas al apartado Emisoras
 audio.volume = store("radio_vol") ?? 0.8; $("vol").value = audio.volume;
 
 async function api(path){
@@ -167,12 +176,13 @@ function delExtra(st){
 function renderFavs(){
   const g = $("favs"); g.innerHTML = "";
   $("favTitle").hidden = favs.length === 0;
-  favs.forEach(st => { const b = card(st); b.onclick = () => play(st, b); g.append(b); });
+  favs.forEach(st => { const b = card(st); b.onclick = () => play(st, b); onLongPress(b, () => stationMenu(st)); g.append(b); });
 }
 
 function renderPresets(){
   const g = $("presets"); g.innerHTML = "";
   PRESETS.forEach((name,i) => {
+    if (hidden.includes(name)) return;
     const b = card(null, name);
     b.onclick = async () => {
       unlock();
@@ -188,25 +198,82 @@ function renderPresets(){
     f.className = "fav"; f.setAttribute("role","button"); f.title = "Favorita";
     const esFav = () => favs.some(x => x.presetName === name);
     f.textContent = esFav() ? "★" : "☆";
-    f.onclick = async e => {
-      e.stopPropagation();
-      if (esFav()){ favs = favs.filter(x => x.presetName !== name); store("radio_favs", favs); renderFavs(); f.textContent = "☆"; return; }
-      try{
-        const r = await search(name, "ES");
-        if (!r.length) return setMsg("No encuentro " + name + " ahora mismo.");
-        favs = [...favs, {...slim(r[0]), presetName: name}]; store("radio_favs", favs); renderFavs(); f.textContent = "★";
-      }catch(err){ setMsg("No hay conexión con el directorio de emisoras. Revisa tu internet."); }
-    };
+    f.onclick = e => { e.stopPropagation(); esFav() ? unfavPreset(name) : favPreset(name); };
     b.append(f);
+    onLongPress(b, () => presetMenu(name));
     g.append(b);
   });
   extra.forEach(st => {
     const b = card(st); b.onclick = () => play(st, b);
-    const x = document.createElement("span");
-    x.className = "del"; x.setAttribute("role","button"); x.title = "Quitar de Emisoras"; x.textContent = "✕";
-    x.onclick = e => { e.stopPropagation(); if (confirm("¿Quitar " + st.name.trim() + " de Emisoras?")) delExtra(st); };
-    b.append(x); g.append(b);
+    onLongPress(b, () => stationMenu(st));
+    g.append(b);
   });
+  if (hidden.length){
+    const r = document.createElement("button");
+    r.type = "button"; r.className = "st"; r.style.justifyContent = "center"; r.style.color = "var(--muted)";
+    r.textContent = "Recuperar emisoras borradas";
+    r.onclick = () => { hidden = []; store("radio_hidden", hidden); renderPresets(); };
+    g.append(r);
+  }
+}
+
+// ---- Menú al mantener pulsada una emisora ----
+function onLongPress(el, fn){
+  let t, fired = false, sx = 0, sy = 0;
+  el.addEventListener("pointerdown", e => {
+    fired = false; sx = e.clientX; sy = e.clientY;
+    t = setTimeout(() => { fired = true; if (navigator.vibrate) navigator.vibrate(30); fn(); }, 550);
+  });
+  el.addEventListener("pointermove", e => { if (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10) clearTimeout(t); });
+  ["pointerup", "pointercancel", "pointerleave"].forEach(ev => el.addEventListener(ev, () => clearTimeout(t)));
+  el.addEventListener("click", e => { if (fired){ fired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  el.addEventListener("contextmenu", e => e.preventDefault());
+}
+function openMenu(title, items){
+  $("sheetTitle").textContent = title;
+  const box = $("sheetBtns"); box.innerHTML = "";
+  [...items, {label: "Cancelar"}].forEach(it => {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = it.label;
+    if (it.danger) b.className = "danger";
+    b.onclick = () => { closeMenu(); if (it.action) it.action(); };
+    box.append(b);
+  });
+  $("sheet").hidden = false;
+}
+function closeMenu(){ $("sheet").hidden = true; }
+$("sheet").onclick = e => { if (e.target.id === "sheet") closeMenu(); };
+
+async function favPreset(name){
+  try{
+    const r = await search(name, "ES");
+    if (!r.length) return setMsg("No encuentro " + name + " ahora mismo.");
+    favs = [...favs, {...slim(r[0]), presetName: name}]; store("radio_favs", favs); renderFavs(); renderPresets();
+  }catch(err){ setMsg("No hay conexión con el directorio de emisoras. Revisa tu internet."); }
+}
+function unfavPreset(name){ favs = favs.filter(x => x.presetName !== name); store("radio_favs", favs); renderFavs(); renderPresets(); }
+function hidePreset(name){ if (!hidden.includes(name)){ hidden = [...hidden, name]; store("radio_hidden", hidden); } renderPresets(); }
+function showPreset(name){ hidden = hidden.filter(n => n !== name); store("radio_hidden", hidden); renderPresets(); }
+
+function presetMenu(name){
+  const fav = favs.some(x => x.presetName === name);
+  openMenu(name, [
+    fav ? {label: "Quitar de Favoritas", action: () => unfavPreset(name)} : {label: "Añadir a Favoritas", action: () => favPreset(name)},
+    {label: "Borrar de Emisoras", danger: true, action: () => hidePreset(name)}
+  ]);
+}
+function stationMenu(st){
+  const items = [];
+  items.push(isFav(st) ? {label: "Quitar de Favoritas", action: () => toggleFav(st)} : {label: "Añadir a Favoritas", action: () => toggleFav(st)});
+  if (st.presetName){
+    const enEmisoras = !hidden.includes(st.presetName);
+    items.push(enEmisoras ? {label: "Borrar de Emisoras", danger: true, action: () => hidePreset(st.presetName)}
+                          : {label: "Añadir a Emisoras", action: () => showPreset(st.presetName)});
+  }else{
+    const enEmisoras = extra.some(e => e.stationuuid === st.stationuuid);
+    items.push(enEmisoras ? {label: "Borrar de Emisoras", danger: true, action: () => delExtra(st)}
+                          : {label: "Añadir a Emisoras", action: () => addExtra(st)});
+  }
+  openMenu(st.name.trim(), items);
 }
 
 // Los móviles solo dejan sonar audio si play() se llama justo al tocar.
@@ -270,7 +337,7 @@ $("form").onsubmit = async e => {
   try{
     const r = await search(q);
     setMsg(r.length ? r.length + " emisoras encontradas" : "Ninguna emisora coincide. Prueba con otro nombre.");
-    r.forEach(st => { const b = card(st); b.onclick = () => { play(st, b); addExtra(st); }; $("results").append(b); });
+    r.forEach(st => { const b = card(st); b.onclick = () => { play(st, b); addExtra(st); }; onLongPress(b, () => stationMenu(st)); $("results").append(b); });
   }catch(err){ setMsg("No hay conexión con el directorio de emisoras. Revisa tu internet."); }
 };
 // El mensaje sale también flotando abajo de la pantalla, para verlo estés donde estés
@@ -335,7 +402,7 @@ window.addEventListener("popstate", () => {
 });
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.09.18-4";
+const APP_VERSION = "2026.09.18-5";
 (() => {
   const prev = store("radio_version");
   store("radio_version", APP_VERSION);
