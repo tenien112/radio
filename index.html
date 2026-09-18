@@ -50,6 +50,8 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
 .st.on{border-color:var(--accent);background:var(--surface)}
 .st img{width:24px;height:24px;border-radius:5px;object-fit:cover;flex:none}
 .st .fav{margin-left:auto;color:var(--warm);background:none;border:0;cursor:pointer;font-size:1.1rem;padding:0 2px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);max-width:90%;width:max-content;padding:12px 18px;border-radius:12px;background:var(--surface);color:var(--text);border:1px solid var(--accent);box-shadow:0 6px 24px rgba(0,0,0,.45);font-size:.95rem;text-align:center;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:50}
+.toast.show{opacity:1;transform:translate(-50%,0)}
 .st .del{color:var(--muted);cursor:pointer;font-size:1rem;padding:0 2px}
 
 .search{display:flex;gap:8px;margin-bottom:12px}
@@ -98,6 +100,7 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
   <footer class="copy">© <span id="year">2026</span> Lorenzo Moreno. Todos los derechos reservados.</footer>
 </div>
 
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none"></audio>
 
 <script>
@@ -194,8 +197,12 @@ function renderPresets(){
 const SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
 function unlock(){ try{ audio.src = SILENCE; audio.play().catch(()=>{}); }catch(e){} }
 
-let tuneId = 0;
-async function play(list, btn, pos){
+let tuneId = 0, tuning = 0, wantPlay = false;
+async function play(...args){
+  tuning++; wantPlay = true;
+  try{ return await tuneIn(...args); } finally { tuning--; }
+}
+async function tuneIn(list, btn, pos){
   unlock();
   if (!Array.isArray(list)) list = [list];
   const id = ++tuneId;
@@ -232,8 +239,8 @@ function showStation(st){
 
 $("play").onclick = () => {
   if (!current) return;
-  if (audio.paused){ audio.src = current.url_resolved; audio.play().then(()=>setMsg("")).catch(()=>setMsg("Esta emisora no responde. Prueba otra.")); }  // reconecta en directo
-  else { audio.pause(); audio.removeAttribute("src"); audio.load(); }
+  if (audio.paused){ wantPlay = true; audio.src = current.url_resolved; audio.play().then(()=>setMsg("")).catch(()=>setMsg("Esta emisora no responde. Prueba otra.")); }  // reconecta en directo
+  else { wantPlay = false; audio.pause(); audio.removeAttribute("src"); audio.load(); }
 };
 audio.onplaying = () => { if (audio.src.startsWith("data:")) return; $("play").textContent = "❚❚"; $("play").ariaLabel = "Pausar"; };
 audio.onpause = audio.onemptied = () => { if (audio.src.startsWith("data:")) return; $("play").textContent = "▶"; $("play").ariaLabel = "Reproducir"; };
@@ -249,7 +256,42 @@ $("form").onsubmit = async e => {
     r.forEach(st => { const b = card(st); b.onclick = () => { play(st, b); addExtra(st); }; $("results").append(b); });
   }catch(err){ setMsg("No hay conexión con el directorio de emisoras. Revisa tu internet."); }
 };
-function setMsg(t){ $("msg").textContent = t; }
+// El mensaje sale también flotando abajo de la pantalla, para verlo estés donde estés
+let toastTimer;
+function setMsg(t){
+  $("msg").textContent = t;
+  const el = $("toast"); clearTimeout(toastTimer);
+  if (!t){ el.classList.remove("show"); return; }
+  el.textContent = t; el.classList.add("show");
+  if (!t.endsWith("…")) toastTimer = setTimeout(() => el.classList.remove("show"), 5000);  // los "Conectando…" se quedan hasta el siguiente aviso
+}
+
+// Segundo plano: la radio sigue sonando al salir de la app y se reconecta sola si se corta la señal
+let retryTimer, retries = 0;
+function reconnect(){
+  if (!wantPlay || tuning || !current) return;
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => {
+    if (!wantPlay || tuning || !current || !audio.paused && !audio.error && !audio.ended) return;
+    retries++;
+    audio.src = current.url_resolved;
+    audio.play().catch(() => {});
+  }, Math.min(2000 * (retries + 1), 15000));
+}
+["error","stalled","ended"].forEach(ev => audio.addEventListener(ev, reconnect));
+audio.addEventListener("playing", () => {
+  retries = 0;
+  if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
+});
+audio.addEventListener("pause", () => { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused"; });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && wantPlay && audio.paused) reconnect(); });
+if ("mediaSession" in navigator){
+  const resume = () => { if (!current) return; wantPlay = true; audio.src = current.url_resolved; audio.play().catch(() => {}); };
+  const stop = () => { wantPlay = false; audio.pause(); };
+  for (const [a, f] of [["play", resume], ["pause", stop], ["stop", stop]]){
+    try{ navigator.mediaSession.setActionHandler(a, f); }catch(e){}
+  }
+}
 
 renderPresets(); renderFavs();
 $("year").textContent = new Date().getFullYear();
