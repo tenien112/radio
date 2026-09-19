@@ -408,22 +408,21 @@ if ("mediaSession" in navigator){
 }
 
 // Botón atrás de Android: cerraría la app y cortaría la radio.
-// "Atrás" NUNCA cierra la app, ni sonando ni en pausa. Solo se cierra desde las apps recientes de Android.
-let ignorePop = false, backTimer, backAviso = 0;
+// Mientras suena, el primer "atrás" solo avisa; si pulsas otra vez en unos segundos, se cierra.
+let ignorePop = false, backTimer;
 function guardBack(){ if (!(history.state && history.state.radio)) history.pushState({radio: 1}, ""); }
-function releaseBack(){ clearTimeout(backTimer); }  // ya no suelta el freno al pausar
+function releaseBack(){ clearTimeout(backTimer); if (history.state && history.state.radio){ ignorePop = true; history.back(); } }
 audio.addEventListener("playing", () => { if (!audio.src.startsWith("data:")) guardBack(); });
 window.addEventListener("popstate", () => {
   if (ignorePop){ ignorePop = false; return; }
-  guardBack();  // vuelve a poner el freno al momento: el siguiente "atrás" tampoco cierra
-  if (Date.now() - backAviso > 8000){ backAviso = Date.now(); setMsg("Para salir usa el botón de inicio. Para cerrarla, ciérrala desde las apps recientes."); }
+  if (!wantPlay) return;
+  setMsg("Para seguir oyendo la radio usa el botón de inicio. Pulsa atrás otra vez para cerrarla.");
+  clearTimeout(backTimer);
+  backTimer = setTimeout(() => { if (wantPlay) guardBack(); }, 4000);
 });
-// Refuerzo: cada vez que tocas la app o vuelves a ella, se asegura el freno del botón atrás
-document.addEventListener("pointerdown", guardBack, true);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) guardBack(); });
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.09.19-4";
+const APP_VERSION = "2026.09.19-5";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
@@ -449,7 +448,7 @@ $("install").onclick = async () => {
 const enApp = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
 if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !enApp) $("install").hidden = false;  // iPhone no avisa solo
 
-renderPresets(); renderFavs(); guardBack();
+renderPresets(); renderFavs();
 $("year").textContent = new Date().getFullYear();
 
 // Al abrir, vuelve a sonar la última emisora que escuchaste
