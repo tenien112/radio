@@ -282,11 +282,15 @@ function stationMenu(st){
 // Los móviles solo dejan sonar audio si play() se llama justo al tocar.
 // Como la búsqueda tarda, "desbloqueamos" el reproductor con un silencio en el mismo toque.
 const SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
-function unlock(){ try{ audio.src = SILENCE; audio.play().catch(()=>{}); }catch(e){} }
+function unlock(){ try{ markSelf(); audio.src = SILENCE; audio.play().catch(()=>{}); }catch(e){} }
 
 let tuneId = 0, tuning = 0, wantPlay = false;
+// interrupted = otra app (llamada, YouTube, vídeos…) ha pedido el audio. La radio se aparta y NO vuelve a sonar sola.
+let interrupted = false, lastSelf = 0;
+function markSelf(){ lastSelf = Date.now(); }  // marca que el cambio en el reproductor lo hace la propia app
+
 async function play(...args){
-  tuning++; wantPlay = true;
+  tuning++; wantPlay = true; interrupted = false;
   try{ return await tuneIn(...args); } finally { tuning--; }
 }
 async function tuneIn(list, btn, pos){
@@ -301,7 +305,7 @@ async function tuneIn(list, btn, pos){
     if (id !== tuneId) return;
     showStation(st);
     setMsg("Conectando con " + st.name.trim() + "…");
-    audio.src = st.url_resolved;
+    markSelf(); audio.src = st.url_resolved;
     try{
       await Promise.race([audio.play(), new Promise((_, no) => setTimeout(() => no(new Error("timeout")), 10000))]);
       if (id === tuneId) setMsg("");
@@ -326,8 +330,8 @@ function showStation(st){
 
 $("play").onclick = () => {
   if (!current) return;
-  if (audio.paused){ wantPlay = true; audio.src = current.url_resolved; audio.play().then(()=>setMsg("")).catch(()=>setMsg("Esta emisora no responde. Prueba otra.")); }  // reconecta en directo
-  else { wantPlay = false; releaseBack(); audio.pause(); audio.removeAttribute("src"); audio.load(); }
+  if (audio.paused){ wantPlay = true; interrupted = false; markSelf(); audio.src = current.url_resolved; audio.play().then(()=>setMsg("")).catch(()=>setMsg("Esta emisora no responde. Prueba otra.")); }  // reconecta en directo
+  else { wantPlay = false; interrupted = false; releaseBack(); markSelf(); audio.pause(); audio.removeAttribute("src"); audio.load(); }
 };
 audio.onplaying = () => { if (audio.src.startsWith("data:")) return; $("play").textContent = "❚❚"; $("play").ariaLabel = "Pausar"; };
 audio.onpause = audio.onemptied = () => { if (audio.src.startsWith("data:")) return; $("play").textContent = "▶"; $("play").ariaLabel = "Reproducir"; };
@@ -356,35 +360,35 @@ function setMsg(t){
 // Segundo plano: la radio sigue sonando al salir de la app y se reconecta sola si se corta la señal
 let retryTimer, retries = 0;
 function reconnect(){
-  if (!wantPlay || tuning || !current) return;
+  if (!wantPlay || interrupted || tuning || !current) return;
   clearTimeout(retryTimer);
   retryTimer = setTimeout(() => {
-    if (!wantPlay || tuning || !current || !audio.paused && !audio.error && !audio.ended) return;
+    if (!wantPlay || interrupted || tuning || !current || !audio.paused && !audio.error && !audio.ended) return;
     retries++;
-    audio.src = current.url_resolved;
+    markSelf(); audio.src = current.url_resolved;
     audio.play().catch(() => {});
   }, Math.min(2000 * (retries + 1), 15000));
 }
 ["error","stalled","ended"].forEach(ev => audio.addEventListener(ev, reconnect));
 audio.addEventListener("playing", () => {
-  retries = 0;
+  retries = 0; if (!audio.src.startsWith("data:")) interrupted = false;
   if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
 });
 audio.addEventListener("pause", () => { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused"; });
-// Si el sistema pausa la radio justo al salir de la app, la volvemos a poner al momento
-let hiddenAt = 0;
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden){ hiddenAt = Date.now(); return; }
-  if (wantPlay && audio.paused) reconnect();
-});
+// Si la pausa no la ha hecho la app (llamada de teléfono, YouTube, un vídeo…), la radio cede el sonido
+// y se queda en pausa. Antes se volvía a poner sola y se peleaba con el móvil: cortaba los vídeos
+// y seguía sonando durante las llamadas. Ahora se reanuda con ▶, con la notificación o sola al colgar si Android lo permite.
 audio.addEventListener("pause", () => {
-  if (wantPlay && !tuning && document.hidden && !audio.src.startsWith("data:")){  // pausa del sistema, no tuya: seguimos
-    audio.play().catch(() => reconnect());
-  }
+  if (audio.src.startsWith("data:") || tuning || !wantPlay || Date.now() - lastSelf < 1000) return;
+  interrupted = true; clearTimeout(retryTimer);
+  setMsg("Radio en pausa: otra app o una llamada está usando el sonido. Pulsa ▶ para volver.");
+});
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && wantPlay && audio.paused && !interrupted) reconnect();
 });
 if ("mediaSession" in navigator){
-  const resume = () => { if (!current) return; wantPlay = true; audio.src = current.url_resolved; audio.play().catch(() => {}); };
-  const stop = () => { wantPlay = false; releaseBack(); audio.pause(); };
+  const resume = () => { if (!current) return; wantPlay = true; interrupted = false; markSelf(); audio.src = current.url_resolved; audio.play().catch(() => {}); };
+  const stop = () => { wantPlay = false; interrupted = false; releaseBack(); markSelf(); audio.pause(); };
   for (const [a, f] of [["play", resume], ["pause", stop], ["stop", stop]]){
     try{ navigator.mediaSession.setActionHandler(a, f); }catch(e){}
   }
@@ -405,7 +409,7 @@ window.addEventListener("popstate", () => {
 });
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.09.18-7";
+const APP_VERSION = "2026.09.19-1";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
