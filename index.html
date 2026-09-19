@@ -395,21 +395,24 @@ if ("mediaSession" in navigator){
 }
 
 // Botón atrás de Android: cerraría la app y cortaría la radio.
-// Mientras suena, el primer "atrás" solo avisa; si pulsas otra vez en unos segundos, se cierra.
-let ignorePop = false, backTimer;
-function guardBack(){ if (!(history.state && history.state.radio)) history.pushState({radio: 1}, ""); }
+// Mientras la radio está puesta, "atrás" NUNCA cierra la app (da igual las veces que lo pulses): la radio sigue sonando.
+// Para salir con la radio sonando, botón de inicio. Para cerrarla del todo, pausa y luego atrás.
+let ignorePop = false, backTimer, backAviso = 0;
+function guardBack(){ if (wantPlay && !(history.state && history.state.radio)) history.pushState({radio: 1}, ""); }
 function releaseBack(){ clearTimeout(backTimer); if (history.state && history.state.radio){ ignorePop = true; history.back(); } }
 audio.addEventListener("playing", () => { if (!audio.src.startsWith("data:")) guardBack(); });
 window.addEventListener("popstate", () => {
   if (ignorePop){ ignorePop = false; return; }
   if (!wantPlay) return;
-  setMsg("Para seguir oyendo la radio usa el botón de inicio. Pulsa atrás otra vez para cerrarla.");
-  clearTimeout(backTimer);
-  backTimer = setTimeout(() => { if (wantPlay) guardBack(); }, 4000);
+  guardBack();  // vuelve a poner el freno al momento: el siguiente "atrás" tampoco cierra
+  if (Date.now() - backAviso > 8000){ backAviso = Date.now(); setMsg("La radio sigue sonando. Para salir usa el botón de inicio; para cerrarla, pausa y pulsa atrás."); }
 });
+// Refuerzo: cada vez que tocas la app o vuelves a ella, se asegura el freno del botón atrás
+document.addEventListener("pointerdown", guardBack, true);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) guardBack(); });
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.09.19-1";
+const APP_VERSION = "2026.09.19-2";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
