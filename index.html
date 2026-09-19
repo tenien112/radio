@@ -381,11 +381,24 @@ audio.addEventListener("pause", () => { if ("mediaSession" in navigator) navigat
 audio.addEventListener("pause", () => {
   if (audio.src.startsWith("data:") || tuning || !wantPlay || Date.now() - lastSelf < 1000) return;
   interrupted = true; clearTimeout(retryTimer);
-  setMsg("Radio en pausa: otra app o una llamada está usando el sonido. Pulsa ▶ para volver.");
+  setMsg("Radio en pausa mientras la llamada o el vídeo usan el sonido. Al volver a la radio sigue sonando sola.");
 });
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && wantPlay && audio.paused && !interrupted) reconnect();
-});
+// Al volver a la radio (tras colgar o dejar YouTube) sigue sonando sola, conectando otra vez en directo
+function resumeAfterInterruption(){
+  if (!document.hidden && wantPlay && audio.paused && current && !tuning){
+    if (interrupted){
+      interrupted = false; retries = 0; markSelf();
+      audio.src = current.url_resolved;
+      audio.play().then(() => setMsg("")).catch(e => {
+        if (e.name === "NotAllowedError") setMsg("Pulsa ▶ para seguir escuchando.");
+        else reconnect();
+      });
+    } else reconnect();
+  }
+}
+document.addEventListener("visibilitychange", resumeAfterInterruption);
+window.addEventListener("focus", resumeAfterInterruption);
+window.addEventListener("pageshow", resumeAfterInterruption);
 if ("mediaSession" in navigator){
   const resume = () => { if (!current) return; wantPlay = true; interrupted = false; markSelf(); audio.src = current.url_resolved; audio.play().catch(() => {}); };
   const stop = () => { wantPlay = false; interrupted = false; releaseBack(); markSelf(); audio.pause(); };
@@ -410,7 +423,7 @@ document.addEventListener("pointerdown", guardBack, true);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) guardBack(); });
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.09.19-3";
+const APP_VERSION = "2026.09.19-4";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
