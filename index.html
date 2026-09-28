@@ -64,6 +64,9 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
 .install[hidden]{display:none}
 .apk{display:inline-block;margin-bottom:8px;color:var(--accent);text-decoration:none;font-weight:600}
 .apk[hidden]{display:none}
+.st img{pointer-events:none;-webkit-user-drag:none}
+.st.drag{border-color:var(--warm);background:var(--surface);transform:scale(1.06);box-shadow:0 10px 26px rgba(0,0,0,.55);position:relative;z-index:5;transition:transform .12s}
+.hint{font-size:.8rem;color:var(--muted);margin:-4px 0 10px}
 .st .del{color:var(--muted);cursor:pointer;font-size:1rem;padding:0 2px}
 
 .search{display:flex;gap:8px;margin-bottom:12px}
@@ -97,6 +100,7 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
   </div>
 
   <h2>Emisoras</h2>
+  <p class="hint">Mantén pulsada una emisora y arrástrala para ponerla donde quieras.</p>
   <div class="grid" id="presets"></div>
 
   <h2 id="favTitle" hidden>Favoritas</h2>
@@ -108,6 +112,7 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
     <button>Buscar</button>
   </form>
   <div class="msg" id="msg"></div>
+  <div class="msg" id="resInfo"></div>
   <div class="grid" id="results"></div>
 
   <footer class="copy"><a class="apk" id="apk" href="https://github.com/tenien112/radioapk/releases/latest/download/RADIO-LORENZITO.apk" hidden>📦 Descargar la app Android (APK)</a><br>© <span id="year">2026</span> Lorenzo Moreno. Todos los derechos reservados.</footer>
@@ -119,32 +124,148 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
 
 <script>
 const PRESETS = ["Kiss FM","Cadena 100","Los 40","Europa FM","Cadena Dial","Rock FM","Cadena SER","COPE","Radio Nacional","Onda Cero","Hit FM","Loca FM"];
-const SERVERS = ["https://de1.api.radio-browser.info","https://de2.api.radio-browser.info","https://fi1.api.radio-browser.info"];
+// Otros nombres con los que aparecen en el directorio
+const ALIAS = {"Radio Nacional": ["RNE"]};
+// Servidores del directorio de emisoras. La lista buena se descarga sola cada día; estos son de reserva.
+const FALLBACK = ["https://de1.api.radio-browser.info","https://de2.api.radio-browser.info","https://fi1.api.radio-browser.info","https://nl1.api.radio-browser.info","https://at1.api.radio-browser.info","https://all.api.radio-browser.info"];
 const audio = document.getElementById("audio");
 const $ = id => document.getElementById(id);
 let current = null;
 
 function store(k,v){try{ if(v===undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k,JSON.stringify(v)); }catch(e){ return null; }}
 let favs = store("radio_favs") || [];
-let extra = store("radio_extra") || [];
-let hidden = store("radio_hidden") || [];  // emisoras fijas que has borrado  // emisoras añadidas al apartado Emisoras
+let extra = store("radio_extra") || [];      // emisoras añadidas al apartado Emisoras
+let hidden = store("radio_hidden") || [];    // emisoras fijas que has borrado
+let order = store("radio_order") || [];      // orden que has elegido arrastrando
+let presetCache = store("radio_preset_cache") || {};  // señales encontradas para cada emisora fija
 audio.volume = store("radio_vol") ?? 0.8; $("vol").value = audio.volume;
 
+// ---- Directorio de emisoras ----
+const secure = location.protocol === "https:";
+async function tfetch(url, ms = 7000){   // si un servidor no contesta, no se queda colgado: pasa al siguiente
+  const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
+  try{ return await fetch(url, {signal: c.signal}); } finally { clearTimeout(t); }
+}
+let servers = null;
+async function getServers(){
+  if (servers) return servers;
+  let saved = store("radio_servers");
+  if (!saved || !saved.t || Date.now() - saved.t > 86400000){
+    try{
+      const r = await tfetch("https://all.api.radio-browser.info/json/servers", 5000);
+      const names = [...new Set((await r.json()).map(s => s.name))].map(n => "https://" + n);
+      if (names.length){ saved = {t: Date.now(), s: names}; store("radio_servers", saved); }
+    }catch(e){}
+  }
+  const list = [...new Set([...(saved?.s || []), ...FALLBACK])];
+  const good = store("radio_server_ok");
+  servers = good && list.includes(good) ? [good, ...list.filter(x => x !== good)] : list;
+  return servers;
+}
 async function api(path){
-  for (const s of SERVERS){
-    try{ const r = await fetch(s + path); if (r.ok) return await r.json(); }catch(e){}
+  for (const s of await getServers()){
+    try{
+      const r = await tfetch(s + path);
+      if (r.ok){
+        const j = await r.json();
+        if (servers[0] !== s){ servers = [s, ...servers.filter(x => x !== s)]; store("radio_server_ok", s); }
+        return j;
+      }
+    }catch(e){}
   }
   throw new Error("sin conexión");
 }
-async function search(name, country){
-  const p = new URLSearchParams({name, limit:"25", hidebroken:"true", order:"clickcount", reverse:"true"});
-  if (country) p.set("countrycode", country);
-  const list = await api("/json/stations/search?" + p);
-  // Evita flujos HLS y, si la página va por https, las emisiones http (el navegador las bloquea)
-  const secure = location.protocol === "https:";
-  return list.filter(s => s.url_resolved && !s.hls && (!secure || s.url_resolved.startsWith("https:")));
+const norm = s => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+const usable = s => s && s.url_resolved && !s.hls && s.lastcheckok !== 0;
+// La página va por https: las emisiones http se piden por https (el navegador bloquea las http)
+const fixUrl = s => (secure && s.url_resolved.startsWith("http:")) ? {...s, url_resolved: "https:" + s.url_resolved.slice(5)} : s;
+function tidy(lists){  // quita repetidas y caídas; primero las que ya van por https
+  const seen = new Set(), ok = [], http = [];
+  for (const l of lists) for (const s of l || []){
+    if (!usable(s) || seen.has(s.stationuuid)) continue;
+    seen.add(s.stationuuid);
+    (secure && s.url_resolved.startsWith("http:") ? http : ok).push(s);
+  }
+  return [...ok, ...http.map(fixUrl)];
+}
+async function search(q, country, limit = 60){
+  const base = {limit: String(limit), hidebroken: "true", order: "clickcount", reverse: "true"};
+  if (country) base.countrycode = country;
+  const ps = [new URLSearchParams({...base, name: q})];
+  if (/\s/.test(q)) ps.push(new URLSearchParams({...base, name: q.replace(/\s+/g, "")}));  // "Los 40" = "LOS40"
+  if (!country){
+    ps.push(new URLSearchParams({...base, tag: q.toLowerCase()}));   // estilo: rock, flamenco, noticias…
+    ps.push(new URLSearchParams({...base, state: q}));               // provincia o región: Murcia…
+  }
+  const res = await Promise.allSettled(ps.map(p => api("/json/stations/search?" + p)));
+  if (res.every(r => r.status === "rejected")) throw new Error("sin conexión");
+  return tidy(res.map(r => r.status === "fulfilled" ? r.value : []));
+}
+// Señales de una emisora fija. Se guardan un día para que suene al momento, y se renuevan solas.
+async function presetList(name, fresh){
+  const c = presetCache[name];
+  if (!fresh && c && c.list?.length && Date.now() - c.t < 86400000) return {list: c.list, cached: true};
+  const qs = [name, ...(ALIAS[name] || [])];
+  const res = await Promise.allSettled(qs.map(q => search(q, "ES", 25)));
+  if (res.every(r => r.status === "rejected")){
+    if (c?.list?.length) return {list: c.list, cached: true};
+    throw new Error("sin conexión");
+  }
+  const keys = qs.map(norm).filter(Boolean);
+  const score = s => { const n = norm(s.name); return keys.includes(n) ? 0 : keys.some(k => n.includes(k)) ? 1 : 2; };
+  const all = tidy(res.map(r => r.status === "fulfilled" ? r.value : []));
+  const list = all.map((s, i) => ({s, i})).filter(x => score(x.s) < 2)
+    .sort((a, b) => score(a.s) - score(b.s) || a.i - b.i).map(x => slim(x.s)).slice(0, 10);
+  presetCache[name] = {t: Date.now(), list}; store("radio_preset_cache", presetCache);
+  return {list, cached: false};
+}
+// Otra señal de la misma emisora cuando la guardada ha dejado de funcionar
+async function altFor(st){
+  const k = norm(st.name); if (k.length < 3) return [];
+  const r = await search(st.name.trim(), null, 25);
+  return r.filter(s => {
+    const n = norm(s.name);
+    return s.stationuuid !== st.stationuuid && s.url_resolved !== st.url_resolved && n.length >= 3 && (n === k || n.includes(k) || k.includes(n));
+  }).slice(0, 5);
+}
+function replaceSaved(old, neu){  // cambia la señal rota por la que sí suena, sin mover la emisora de sitio
+  if (!neu) return;
+  for (const s of [...favs, ...extra]) if (s.stationuuid === old.stationuuid)
+    Object.assign(s, {url_resolved: neu.url_resolved, favicon: neu.favicon || s.favicon, codec: neu.codec, bitrate: neu.bitrate, src: neu.stationuuid});
+  store("radio_favs", favs); store("radio_extra", extra);
+}
+// Revisa las emisoras guardadas: si han cambiado de dirección se actualizan, si están caídas busca otra señal
+async function refreshSaved(){
+  const all = [...favs, ...extra];
+  const uu = [...new Set(all.map(s => s.src || s.stationuuid).filter(Boolean))];
+  if (!uu.length) return;
+  const map = new Map((await api("/json/stations/byuuid?uuids=" + uu.join(","))).map(s => [s.stationuuid, s]));
+  const altCache = {};
+  for (const s of all){
+    const n = map.get(s.src || s.stationuuid);
+    if (n && usable(n)){
+      const f = fixUrl(n);
+      Object.assign(s, {url_resolved: f.url_resolved, favicon: f.favicon || s.favicon, codec: f.codec, bitrate: f.bitrate});
+    } else if (s.name){
+      const k = norm(s.name);
+      try{ altCache[k] = altCache[k] || await altFor(s); }catch(e){ altCache[k] = []; }
+      if (altCache[k][0]) replaceSaved(s, altCache[k][0]);
+    }
+  }
+  store("radio_favs", favs); store("radio_extra", extra);
+}
+async function autoRefresh(force){
+  const last = store("radio_refreshed") || 0;
+  if (!force && Date.now() - last < 12 * 3600000) return;
+  store("radio_refreshed", Date.now());
+  try{ await refreshSaved(); }catch(e){}
+  for (const n of PRESETS){
+    if (hidden.includes(n)) continue;
+    try{ await presetList(n, true); }catch(e){ break; }
+  }
 }
 
+// ---- Tarjetas de emisora ----
 function card(st, label){
   const b = document.createElement("button");
   b.className = "st"; b.type = "button";
@@ -153,6 +274,7 @@ function card(st, label){
   const t = document.createElement("span"); t.textContent = label || st.name;
   b.append(img, t);
   if (st){
+    b.dataset.uuid = st.stationuuid;
     const f = document.createElement("span");
     f.className = "fav"; f.setAttribute("role","button");
     f.title = "Favorita"; f.textContent = isFav(st) ? "★" : "☆";
@@ -160,6 +282,10 @@ function card(st, label){
     b.append(f);
   }
   return b;
+}
+function markCurrent(){
+  if (!current) return;
+  document.querySelectorAll(".st[data-uuid]").forEach(b => { if (b.dataset.uuid === current.stationuuid && !b.classList.contains("on") && !document.querySelector(".st.on")) b.classList.add("on"); });
 }
 // La estrella marca la emisora como favorita (bloque Favoritas) y además la deja en Emisoras
 const isFav = st => favs.some(f => f.stationuuid === st.stationuuid);
@@ -181,38 +307,60 @@ function delExtra(st){
 function renderFavs(){
   const g = $("favs"); g.innerHTML = "";
   $("favTitle").hidden = favs.length === 0;
-  favs.forEach(st => { const b = card(st); b.onclick = () => play(st, b); onLongPress(b, () => stationMenu(st)); g.append(b); });
+  favs.forEach((st, i) => {
+    const b = card(st); b.dataset.key = "f:" + i;
+    b.onclick = () => play(st, b);
+    onLongPress(b, () => stationMenu(st), true);
+    g.append(b);
+  });
+  markCurrent();
 }
 
+// Emisoras fijas y añadidas, en el orden que hayas elegido. Las nuevas van al final.
+const keyOf = it => it.preset ? "p:" + it.preset : "u:" + it.st.stationuuid;
+function emisorasItems(){
+  const items = [...PRESETS.filter(n => !hidden.includes(n)).map(n => ({preset: n})), ...extra.map(st => ({st}))];
+  const idx = it => { const i = order.indexOf(keyOf(it)); return i < 0 ? 1e6 : i; };
+  return items.map((it, n) => ({it, n})).sort((a, b) => idx(a.it) - idx(b.it) || a.n - b.n).map(x => x.it);
+}
 function renderPresets(){
   const g = $("presets"); g.innerHTML = "";
-  PRESETS.forEach((name,i) => {
-    if (hidden.includes(name)) return;
-    const b = card(null, name);
-    b.onclick = async () => {
-      unlock();
-      setMsg("Sintonizando " + name + "…");
-      try{
-        const r = await search(name, "ES");
-        if (!r.length) return setMsg("No encuentro " + name + " ahora mismo. Prueba con el buscador.");
-        play(r, b, i / (PRESETS.length - 1));
-      }catch(e){ setMsg("No hay conexión con el directorio de emisoras. Revisa tu internet."); }
-    };
-    // Estrella de las emisoras fijas: busca la emisora y la guarda en Favoritas
-    const f = document.createElement("span");
-    f.className = "fav"; f.setAttribute("role","button"); f.title = "Favorita";
-    const esFav = () => favs.some(x => x.presetName === name);
-    f.textContent = esFav() ? "★" : "☆";
-    f.onclick = e => { e.stopPropagation(); esFav() ? unfavPreset(name) : favPreset(name); };
-    b.append(f);
-    onLongPress(b, () => presetMenu(name));
+  for (const it of emisorasItems()){
+    let b;
+    if (it.preset){
+      const name = it.preset, pos = PRESETS.indexOf(name) / (PRESETS.length - 1);
+      b = card(null, name);
+      b.onclick = async () => {
+        unlock();
+        setMsg("Sintonizando " + name + "…");
+        try{
+          let r = await presetList(name);
+          if (!r.list.length) r = await presetList(name, true);
+          if (!r.list.length) return setMsg("No encuentro " + name + " ahora mismo. Prueba con el buscador.");
+          const ok = await play(r.list, b, pos, true);
+          if (ok === false && r.cached){   // las señales guardadas ya no valen: busca las de hoy
+            setMsg("Buscando señal nueva de " + name + "…");
+            r = await presetList(name, true);
+            if (r.list.length) await play(r.list, b, pos, true);
+          }
+        }catch(e){ setMsg("No hay conexión con el directorio de emisoras. Revisa tu internet."); }
+      };
+      // Estrella de las emisoras fijas: busca la emisora y la guarda en Favoritas
+      const f = document.createElement("span");
+      f.className = "fav"; f.setAttribute("role","button"); f.title = "Favorita";
+      const esFav = () => favs.some(x => x.presetName === name);
+      f.textContent = esFav() ? "★" : "☆";
+      f.onclick = e => { e.stopPropagation(); esFav() ? unfavPreset(name) : favPreset(name); };
+      b.append(f);
+      onLongPress(b, () => presetMenu(name), true);
+    } else {
+      const st = it.st;
+      b = card(st); b.onclick = () => play(st, b);
+      onLongPress(b, () => stationMenu(st), true);
+    }
+    b.dataset.key = keyOf(it);
     g.append(b);
-  });
-  extra.forEach(st => {
-    const b = card(st); b.onclick = () => play(st, b);
-    onLongPress(b, () => stationMenu(st));
-    g.append(b);
-  });
+  }
   if (hidden.length){
     const r = document.createElement("button");
     r.type = "button"; r.className = "st"; r.style.justifyContent = "center"; r.style.color = "var(--muted)";
@@ -220,20 +368,71 @@ function renderPresets(){
     r.onclick = () => { hidden = []; store("radio_hidden", hidden); renderPresets(); };
     g.append(r);
   }
+  markCurrent();
 }
 
-// ---- Menú al mantener pulsada una emisora ----
-function onLongPress(el, fn){
+// ---- Mantener pulsada una emisora: arrastrar para ordenar, o soltar sin mover para ver el menú ----
+let dragging = null;
+document.addEventListener("touchmove", e => { if (dragging) e.preventDefault(); }, {passive: false});  // que no se mueva la página
+function onLongPress(el, fn, sortable){
   let t, fired = false, sx = 0, sy = 0;
   el.addEventListener("pointerdown", e => {
+    if (e.button > 0) return;
     fired = false; sx = e.clientX; sy = e.clientY;
-    t = setTimeout(() => { fired = true; if (navigator.vibrate) navigator.vibrate(30); fn(); }, 550);
+    t = setTimeout(() => {
+      fired = true; if (navigator.vibrate) navigator.vibrate(30);
+      if (!sortable) return fn();
+      dragging = {el, grid: el.parentElement, fn, sx, sy, moved: false};
+      el.classList.add("drag");
+      softToast("Arrástrala para cambiarla de sitio, o suelta para ver opciones");
+    }, 500);
   });
-  el.addEventListener("pointermove", e => { if (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10) clearTimeout(t); });
-  ["pointerup", "pointercancel", "pointerleave"].forEach(ev => el.addEventListener(ev, () => clearTimeout(t)));
+  el.addEventListener("pointermove", e => { if (!fired && (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10)) clearTimeout(t); });
+  ["pointerup", "pointercancel", "pointerleave"].forEach(ev => el.addEventListener(ev, () => { if (!fired) clearTimeout(t); }));
   el.addEventListener("click", e => { if (fired){ fired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
   el.addEventListener("contextmenu", e => e.preventDefault());
 }
+// El arrastre se sigue en toda la página: la tarjeta cambia de sitio mientras mueves el dedo
+document.addEventListener("pointermove", e => {
+  const d = dragging; if (!d) return;
+  if (!d.moved && Math.abs(e.clientX - d.sx) < 8 && Math.abs(e.clientY - d.sy) < 8) return;
+  d.moved = true; e.preventDefault();
+  dragMove(e.clientX, e.clientY);
+});
+function dragEnd(ev){
+  const d = dragging; if (!d) return;
+  dragging = null; stopScroll(); hideToast();
+  d.el.classList.remove("drag");
+  if (d.moved) saveOrder(d.grid);
+  else if (ev.type === "pointerup") d.fn();
+}
+document.addEventListener("pointerup", dragEnd);
+document.addEventListener("pointercancel", dragEnd);
+let scrollTimer = null, scrollDir = 0, lastXY = [0, 0];
+function dragMove(x, y){
+  lastXY = [x, y];
+  const {el, grid} = dragging;
+  const over = document.elementFromPoint(x, y)?.closest(".st");
+  if (over && over !== el && over.parentElement === grid && over.dataset.key){
+    const kids = [...grid.children];
+    grid.insertBefore(el, kids.indexOf(over) < kids.indexOf(el) ? over : over.nextSibling);
+  }
+  // Si llegas al borde de la pantalla, la página se desplaza sola
+  scrollDir = y < 70 ? -1 : y > innerHeight - 70 ? 1 : 0;
+  if (scrollDir && !scrollTimer) scrollTimer = setInterval(() => {
+    if (!dragging || !scrollDir) return stopScroll();
+    scrollBy(0, scrollDir * 12); dragMove(...lastXY);
+  }, 30);
+  if (!scrollDir) stopScroll();
+}
+function stopScroll(){ clearInterval(scrollTimer); scrollTimer = null; }
+function saveOrder(g){
+  const keys = [...g.children].map(c => c.dataset.key).filter(Boolean);
+  if (g.id === "favs"){ favs = keys.map(k => favs[+k.slice(2)]).filter(Boolean); store("radio_favs", favs); renderFavs(); }
+  else { order = keys; store("radio_order", order); }
+  if (navigator.vibrate) navigator.vibrate(15);
+}
+
 function openMenu(title, items){
   $("sheetTitle").textContent = title;
   const box = $("sheetBtns"); box.innerHTML = "";
@@ -250,9 +449,9 @@ $("sheet").onclick = e => { if (e.target.id === "sheet") closeMenu(); };
 
 async function favPreset(name){
   try{
-    const r = await search(name, "ES");
-    if (!r.length) return setMsg("No encuentro " + name + " ahora mismo.");
-    favs = [...favs, {...slim(r[0]), presetName: name}]; store("radio_favs", favs); renderFavs(); renderPresets();
+    const r = await presetList(name);
+    if (!r.list.length) return setMsg("No encuentro " + name + " ahora mismo.");
+    favs = [...favs, {...r.list[0], presetName: name}]; store("radio_favs", favs); renderFavs(); renderPresets();
   }catch(err){ setMsg("No hay conexión con el directorio de emisoras. Revisa tu internet."); }
 }
 function unfavPreset(name){ favs = favs.filter(x => x.presetName !== name); store("radio_favs", favs); renderFavs(); renderPresets(); }
@@ -281,6 +480,37 @@ function stationMenu(st){
   openMenu(st.name.trim(), items);
 }
 
+// ---- Buscador y emisoras populares ----
+function showResults(list){
+  const g = $("results"); g.innerHTML = "";
+  list.forEach(st => { const b = card(st); b.onclick = () => { play(st, b); addExtra(st); }; onLongPress(b, () => stationMenu(st)); g.append(b); });
+}
+async function loadPopular(){
+  if ($("q").value.trim()) return;
+  $("resInfo").textContent = "Cargando emisoras populares…";
+  try{
+    const p = new URLSearchParams({countrycode: "ES", limit: "90", hidebroken: "true", order: "clickcount", reverse: "true"});
+    const r = tidy([await api("/json/stations/search?" + p)]).slice(0, 60);
+    if ($("q").value.trim()) return;
+    showResults(r);
+    $("resInfo").textContent = "Las más escuchadas en España ahora mismo. Toca una para añadirla a Emisoras.";
+  }catch(e){ $("resInfo").textContent = ""; }
+}
+$("form").onsubmit = async e => {
+  e.preventDefault();
+  const q = $("q").value.trim();
+  if (!q) return loadPopular();
+  $("q").blur();
+  $("resInfo").textContent = "Buscando…"; $("results").innerHTML = "";
+  try{
+    const r = await search(q, null, 80);
+    if ($("q").value.trim() !== q) return;
+    $("resInfo").textContent = r.length ? r.length + " emisoras encontradas" : "Ninguna emisora coincide. Prueba con otro nombre.";
+    showResults(r);
+  }catch(err){ $("resInfo").textContent = ""; setMsg("No hay conexión con el directorio de emisoras. Revisa tu internet."); }
+};
+$("q").addEventListener("input", () => { if (!$("q").value.trim()) loadPopular(); });
+
 // Los móviles solo dejan sonar audio si play() se llama justo al tocar.
 // Como la búsqueda tarda, "desbloqueamos" el reproductor con un silencio en el mismo toque.
 const SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
@@ -291,9 +521,22 @@ let tuneId = 0, tuning = 0, wantPlay = false;
 let interrupted = false, lastSelf = 0;
 function markSelf(){ lastSelf = Date.now(); }  // marca que el cambio en el reproductor lo hace la propia app
 
-async function play(...args){
+// Si una emisora guardada no suena, busca otra señal de la misma emisora y se queda con la que funcione
+async function play(list, btn, pos, noAlt){
   tuning++; wantPlay = true; interrupted = false;
-  try{ return await tuneIn(...args); } finally { tuning--; }
+  try{
+    let ok = await tuneIn(list, btn, pos);
+    if (ok === false && !noAlt && !Array.isArray(list) && list?.name){
+      const id = tuneId;
+      setMsg("Buscando otra señal de " + list.name.trim() + "…");
+      let alt = [];
+      try{ alt = await altFor(list); }catch(e){}
+      if (id !== tuneId) return;
+      if (alt.length){ ok = await tuneIn(alt, btn, pos); if (ok === true) replaceSaved(list, current); }
+      else setMsg("Esta emisora no emite ahora mismo. Prueba otra o búscala por nombre.");
+    }
+    return ok;
+  } finally { tuning--; }
 }
 async function tuneIn(list, btn, pos){
   unlock();
@@ -309,14 +552,15 @@ async function tuneIn(list, btn, pos){
     setMsg("Conectando con " + st.name.trim() + "…");
     markSelf(); audio.src = st.url_resolved;
     try{
-      await Promise.race([audio.play(), new Promise((_, no) => setTimeout(() => no(new Error("timeout")), 10000))]);
-      if (id === tuneId) setMsg("");
-      return;
+      await Promise.race([audio.play(), new Promise((_, no) => setTimeout(() => no(new Error("timeout")), 8000))]);
+      if (id !== tuneId) return;
+      setMsg("");
+      return true;
     }catch(e){
-      if (e.name === "NotAllowedError"){ setMsg("Pulsa ▶ para empezar a escuchar."); return; }
+      if (e.name === "NotAllowedError"){ setMsg("Pulsa ▶ para empezar a escuchar."); return "blocked"; }
     }
   }
-  if (id === tuneId) setMsg("Esta emisora no emite ahora mismo. Prueba otra o búscala por nombre.");
+  if (id === tuneId){ setMsg("Esta emisora no emite ahora mismo. Prueba otra o búscala por nombre."); return false; }
 }
 
 function showStation(st){
@@ -339,16 +583,6 @@ audio.onplaying = () => { if (audio.src.startsWith("data:")) return; $("play").t
 audio.onpause = audio.onemptied = () => { if (audio.src.startsWith("data:")) return; $("play").textContent = "▶"; $("play").ariaLabel = "Reproducir"; };
 $("vol").oninput = e => { audio.volume = e.target.value; store("radio_vol", audio.volume); };
 
-$("form").onsubmit = async e => {
-  e.preventDefault();
-  const q = $("q").value.trim(); if (!q) return;
-  setMsg("Buscando…"); $("results").innerHTML = "";
-  try{
-    const r = await search(q);
-    setMsg(r.length ? r.length + " emisoras encontradas" : "Ninguna emisora coincide. Prueba con otro nombre.");
-    r.forEach(st => { const b = card(st); b.onclick = () => { play(st, b); addExtra(st); }; onLongPress(b, () => stationMenu(st)); $("results").append(b); });
-  }catch(err){ setMsg("No hay conexión con el directorio de emisoras. Revisa tu internet."); }
-};
 // El mensaje sale también flotando abajo de la pantalla, para verlo estés donde estés
 let toastTimer;
 function setMsg(t){
@@ -444,7 +678,7 @@ if (APK){
 } else if (/android/i.test(navigator.userAgent)) $("apk").hidden = false;
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.09.19-6";
+const APP_VERSION = "2026.09.28-1";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
@@ -480,6 +714,13 @@ if (last && last.url_resolved){
   showStation(last);
   setTimeout(() => play(last), justUpdated ? 2500 : 0);  // si hay aviso de actualización, que se vea primero
 }
+function softToast(t){ const el = $("toast"); clearTimeout(toastTimer); el.textContent = t; el.classList.add("suave", "show"); }
+function hideToast(){ const el = $("toast"); if (el.classList.contains("suave")) el.classList.remove("show"); }
+
+// Actualización automática de emisoras: al abrir y cada 12 horas (y siempre tras una actualización de la app)
+setTimeout(() => autoRefresh(justUpdated), justUpdated ? 5000 : 8000);
+setInterval(() => autoRefresh(), 3600000);
+loadPopular();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
 </body>
