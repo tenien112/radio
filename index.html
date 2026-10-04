@@ -74,6 +74,7 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
 .search button{padding:0 18px;border-radius:10px;border:0;background:var(--text);color:var(--bg);font-weight:600;cursor:pointer}
 .msg{color:var(--muted);font-size:.9rem;min-height:1.2em;margin-bottom:10px}
 @media (prefers-reduced-motion:reduce){.needle{transition:none}}
+.spoti{display:block;width:100%;margin:-10px 0 26px;padding:13px;border-radius:10px;border:0;background:#1DB954;color:#0b2a16;font:inherit;font-weight:700;font-size:1rem;cursor:pointer}
 .copy{margin:32px 0 8px;padding-top:14px;border-top:1px solid var(--line);text-align:center;font-size:13px;color:var(--muted)}
 </style>
 </head>
@@ -98,6 +99,7 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
     <button class="play" id="play" disabled aria-label="Reproducir">▶</button>
     <input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Volumen">
   </div>
+  <button type="button" class="spoti" id="spoti">🎧 Mis canciones de Spotify</button>
 
   <h2>Emisoras</h2>
   <p class="hint">Mantén pulsada una emisora y arrástrala para ponerla donde quieras.</p>
@@ -574,6 +576,16 @@ function showStation(st){
   }
 }
 
+// Spotify: abre "Canciones que te gustan" en la app de Spotify (cuenta gratuita). Para la radio antes, para que no suenen las dos.
+$("spoti").onclick = () => {
+  if (!audio.paused){ wantPlay = false; interrupted = false; releaseBack(); markSelf(); audio.pause(); audio.removeAttribute("src"); audio.load(); }
+  let fuera = false;
+  const marcha = () => { if (document.hidden) fuera = true; };
+  document.addEventListener("visibilitychange", marcha, {once:true});
+  location.href = "spotify:collection:tracks";
+  setTimeout(() => { if (!fuera && !document.hidden) window.open("https://open.spotify.com/collection/tracks", "_blank"); }, 1800);
+};
+
 $("play").onclick = () => {
   if (!current) return;
   if (audio.paused){ wantPlay = true; interrupted = false; markSelf(); audio.src = current.url_resolved; audio.play().then(()=>setMsg("")).catch(()=>setMsg("Esta emisora no responde. Prueba otra.")); }  // reconecta en directo
@@ -678,7 +690,7 @@ if (APK){
 } else if (/android/i.test(navigator.userAgent)) $("apk").hidden = false;
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.09.28-1";
+const APP_VERSION = "2026.10.03-1";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
