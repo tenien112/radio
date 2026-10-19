@@ -74,8 +74,8 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
 .search button{padding:0 18px;border-radius:10px;border:0;background:var(--text);color:var(--bg);font-weight:600;cursor:pointer}
 .msg{color:var(--muted);font-size:.9rem;min-height:1.2em;margin-bottom:10px}
 @media (prefers-reduced-motion:reduce){.needle{transition:none}}
-.spoti{display:block;width:100%;margin:-10px 0 26px;padding:13px;border-radius:10px;border:0;background:#1DB954;color:#0b2a16;font:inherit;font-weight:700;font-size:1rem;cursor:pointer}
-.refrescar{display:block;width:100%;margin:-4px 0 12px;padding:11px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text);font:inherit;font-weight:600;cursor:pointer}
+.spoti{display:block;width:100%;margin:-10px 0 10px;padding:13px;border-radius:10px;border:0;background:#1DB954;color:#0b2a16;font:inherit;font-weight:700;font-size:1rem;cursor:pointer}
+.refrescar{display:block;width:100%;margin:0 0 26px;padding:11px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text);font:inherit;font-weight:600;cursor:pointer}
 .copy{margin:32px 0 8px;padding-top:14px;border-top:1px solid var(--line);text-align:center;font-size:13px;color:var(--muted)}
 </style>
 </head>
@@ -101,6 +101,7 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
     <input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Volumen">
   </div>
   <button type="button" class="spoti" id="spoti">🎧 Mis canciones de Spotify</button>
+  <button type="button" class="refrescar" id="refrescar">🔄 Actualizar emisoras</button>
 
   <h2>Emisoras</h2>
   <p class="hint">Mantén pulsada una emisora y arrástrala para ponerla donde quieras.</p>
@@ -114,7 +115,6 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
     <input id="q" placeholder="Nombre, ciudad o estilo" autocomplete="off">
     <button>Buscar</button>
   </form>
-  <button type="button" class="refrescar" id="refrescar">🔄 Actualizar búsqueda de emisoras</button>
   <div class="msg" id="msg"></div>
   <div class="msg" id="resInfo"></div>
   <div class="grid" id="results"></div>
@@ -521,7 +521,7 @@ $("refrescar").onclick = async () => {
     await autoRefresh(true);
     setMsg("Emisoras actualizadas");
   }catch(e){}
-  b.disabled = false; b.textContent = "🔄 Actualizar búsqueda de emisoras";
+  b.disabled = false; b.textContent = "🔄 Actualizar emisoras";
 };
 $("q").addEventListener("input", () => { if (!$("q").value.trim()) loadPopular(); });
 
@@ -702,7 +702,7 @@ if (APK){
 } else if (/android/i.test(navigator.userAgent)) $("apk").hidden = false;
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.10.20-2";
+const APP_VERSION = "2026.10.20-3";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
