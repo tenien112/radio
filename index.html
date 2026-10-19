@@ -88,9 +88,9 @@ html.clasico .st:hover{border-color:var(--muted)}
 html.clasico .st.on{border-color:var(--accent);background:var(--surface);color:var(--text);box-shadow:none}
 html.clasico .st .del{color:var(--muted)}
 html.clasico .search button{background:var(--text);color:var(--bg)}
-html.clasico .refrescar,html.clasico .tema{border:1px solid var(--line);background:transparent;color:var(--text)}
+html.clasico .refrescar{border:1px solid var(--line);background:transparent;color:var(--text)}
 html.clasico .toast,html.clasico .sheet,html.clasico .st.drag{--sombra:.55}
-.tema{display:block;width:100%;margin:-16px 0 26px;padding:11px;border-radius:10px;border:1px solid var(--accent);background:transparent;color:var(--accent);font:inherit;font-weight:600;cursor:pointer}
+.tema{display:block;margin:-16px auto 26px;padding:7px 14px;border-radius:999px;border:1px solid var(--accent);background:var(--surface);color:var(--accent);font:inherit;font-size:.85rem;font-weight:700;cursor:pointer}
 </style>
 <script>try{ if(JSON.parse(localStorage.getItem("radio_tema"))==="clasico") document.documentElement.classList.add("clasico"); }catch(e){}</script>
 </head>
@@ -117,7 +117,7 @@ html.clasico .toast,html.clasico .sheet,html.clasico .st.drag{--sombra:.55}
   </div>
   <button type="button" class="spoti" id="spoti">🎧 Mis canciones de Spotify</button>
   <button type="button" class="refrescar" id="refrescar">🔄 Actualizar emisoras</button>
-  <button type="button" class="tema" id="tema">🎨 Poner colores de antes</button>
+  <button type="button" class="tema" id="tema">🎨 Cambiar tono</button>
 
   <h2>Emisoras</h2>
   <p class="hint">Mantén pulsada una emisora y arrástrala para ponerla donde quieras.</p>
@@ -718,7 +718,7 @@ if (APK){
 } else if (/android/i.test(navigator.userAgent)) $("apk").hidden = false;
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.10.20-11";
+const APP_VERSION = "2026.10.20-12";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
@@ -771,7 +771,6 @@ if ("serviceWorker" in navigator){
   const b=document.getElementById("tema"), meta=document.querySelector('meta[name="theme-color"]');
   function pinta(){
     const c=document.documentElement.classList.contains("clasico");
-    b.textContent = c ? "🎨 Poner colores azules" : "🎨 Poner colores de antes";
     if(meta) meta.content = c ? "#2B0F2E" : "#4995ED";
   }
   b.addEventListener("click",()=>{
