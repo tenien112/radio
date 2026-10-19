@@ -704,7 +704,7 @@ if (APK){
 } else if (/android/i.test(navigator.userAgent)) $("apk").hidden = false;
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.10.20-9";
+const APP_VERSION = "2026.10.20-10";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
@@ -752,6 +752,20 @@ if ("serviceWorker" in navigator){
   let recargada=false;
   navigator.serviceWorker.addEventListener("controllerchange",()=>{ if(!recargada){ recargada=true; location.reload(); } });
 }
+// Al abrir o volver a la app, mira si hay versión nueva en internet y, si la hay, recarga en el momento.
+async function buscarVersionNueva(){
+  try{
+    const t = await (await fetch("./?v="+Date.now(),{cache:"no-store"})).text();
+    const m = t.match(/const APP_VERSION = "([^"]+)"/);
+    if (m && m[1] !== APP_VERSION){
+      let ult = 0; try{ ult = +sessionStorage.getItem("radio_recarga")||0; }catch(e){}
+      if (Date.now()-ult > 15000){ try{ sessionStorage.setItem("radio_recarga", Date.now()); }catch(e){} location.reload(); }
+    }
+  }catch(e){}
+}
+buscarVersionNueva();
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") buscarVersionNueva(); });
+window.addEventListener("pageshow",e=>{ if(e.persisted) buscarVersionNueva(); });
 </script>
 </body>
 </html>
