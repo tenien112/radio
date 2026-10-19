@@ -79,7 +79,20 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
 .spoti{display:block;width:100%;margin:-10px 0 10px;padding:13px;border-radius:10px;border:0;background:#1DB954;color:#0b2a16;font:inherit;font-weight:700;font-size:1rem;cursor:pointer}
 .refrescar{display:block;width:100%;margin:0 0 26px;padding:11px;border-radius:10px;border:0;background:var(--accent);color:#fff;font:inherit;font-weight:600;cursor:pointer}
 .copy{margin:32px 0 8px;padding-top:14px;border-top:1px solid var(--line);text-align:center;font-size:13px;color:var(--muted)}
+/* Colores de antes (morado y rosa), se activan con el botón de colores */
+html.clasico{--bg:#2B0F2E;--surface:#3D1A42;--line:#5A2E60;--text:#F7EAF3;--muted:#B89AB5;--accent:#FF4FA3}
+html.clasico h1{margin:0 0 22px;padding:0;background:none;color:var(--text)}
+html.clasico .play{color:#2B0F2E}
+html.clasico .st{border-color:var(--line);background:transparent;color:var(--text)}
+html.clasico .st:hover{border-color:var(--muted)}
+html.clasico .st.on{border-color:var(--accent);background:var(--surface);color:var(--text);box-shadow:none}
+html.clasico .st .del{color:var(--muted)}
+html.clasico .search button{background:var(--text);color:var(--bg)}
+html.clasico .refrescar,html.clasico .tema{border:1px solid var(--line);background:transparent;color:var(--text)}
+html.clasico .toast,html.clasico .sheet,html.clasico .st.drag{--sombra:.55}
+.tema{display:block;width:100%;margin:-16px 0 26px;padding:11px;border-radius:10px;border:1px solid var(--accent);background:transparent;color:var(--accent);font:inherit;font-weight:600;cursor:pointer}
 </style>
+<script>try{ if(JSON.parse(localStorage.getItem("radio_tema"))==="clasico") document.documentElement.classList.add("clasico"); }catch(e){}</script>
 </head>
 <body>
 <div class="wrap">
@@ -104,6 +117,7 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
   </div>
   <button type="button" class="spoti" id="spoti">🎧 Mis canciones de Spotify</button>
   <button type="button" class="refrescar" id="refrescar">🔄 Actualizar emisoras</button>
+  <button type="button" class="tema" id="tema">🎨 Poner colores de antes</button>
 
   <h2>Emisoras</h2>
   <p class="hint">Mantén pulsada una emisora y arrástrala para ponerla donde quieras.</p>
@@ -704,7 +718,7 @@ if (APK){
 } else if (/android/i.test(navigator.userAgent)) $("apk").hidden = false;
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.10.20-10";
+const APP_VERSION = "2026.10.20-11";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
@@ -752,6 +766,20 @@ if ("serviceWorker" in navigator){
   let recargada=false;
   navigator.serviceWorker.addEventListener("controllerchange",()=>{ if(!recargada){ recargada=true; location.reload(); } });
 }
+// Botón para cambiar entre los colores azules y los de antes (morado y rosa). Se queda guardado.
+(function(){
+  const b=document.getElementById("tema"), meta=document.querySelector('meta[name="theme-color"]');
+  function pinta(){
+    const c=document.documentElement.classList.contains("clasico");
+    b.textContent = c ? "🎨 Poner colores azules" : "🎨 Poner colores de antes";
+    if(meta) meta.content = c ? "#2B0F2E" : "#4995ED";
+  }
+  b.addEventListener("click",()=>{
+    const c=document.documentElement.classList.toggle("clasico");
+    store("radio_tema", c ? "clasico" : "azul"); pinta();
+  });
+  pinta();
+})();
 // Al abrir o volver a la app, mira si hay versión nueva en internet y, si la hay, recarga en el momento.
 async function buscarVersionNueva(){
   try{
