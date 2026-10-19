@@ -1,5 +1,5 @@
 // RADIO-LORENZITO. Siempre pide la app nueva a la red (sin caché del navegador); solo usa lo guardado si no hay conexión.
-const CACHE = "radio-v14";
+const CACHE = "radio-v15";
 const APP = ["./", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(APP.map(u => new Request(u, {cache: "reload"}))))); });
 self.addEventListener("activate", e => {
