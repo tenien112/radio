@@ -7,7 +7,7 @@
 <meta name="author" content="Lorenzo Moreno">
 <meta name="copyright" content="© Lorenzo Moreno">
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#2B0F2E">
+<meta name="theme-color" content="#0B1A2E">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Radio">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -16,8 +16,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#2B0F2E; --surface:#3D1A42; --line:#5A2E60;
-  --text:#F7EAF3; --muted:#B89AB5; --accent:#FF4FA3; --warm:#FFC857;
+  --bg:#0B1A2E; --surface:#132A47; --line:#1F4370;
+  --text:#EAF3FF; --muted:#9BB4D1; --accent:#2F8CFF; --warm:#FFC857;
   --font:"Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 *{box-sizing:border-box}
@@ -38,7 +38,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--warm);outline-o
 
 /* Controls */
 .controls{display:flex;align-items:center;gap:14px;margin-bottom:26px}
-.play{width:64px;height:64px;border-radius:50%;border:0;background:var(--accent);color:#2B0F2E;font-size:1.6rem;cursor:pointer;flex:none}
+.play{width:64px;height:64px;border-radius:50%;border:0;background:var(--accent);color:#0B1A2E;font-size:1.6rem;cursor:pointer;flex:none}
 .play:disabled{opacity:.4;cursor:default}
 input[type=range]{flex:1;accent-color:var(--accent)}
 
@@ -702,7 +702,7 @@ if (APK){
 } else if (/android/i.test(navigator.userAgent)) $("apk").hidden = false;
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.10.20-3";
+const APP_VERSION = "2026.10.20-4";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
