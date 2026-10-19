@@ -702,7 +702,7 @@ if (APK){
 } else if (/android/i.test(navigator.userAgent)) $("apk").hidden = false;
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.10.20-5";
+const APP_VERSION = "2026.10.20-6";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
@@ -745,7 +745,11 @@ function hideToast(){ const el = $("toast"); if (el.classList.contains("suave"))
 setTimeout(() => autoRefresh(justUpdated), justUpdated ? 5000 : 8000);
 setInterval(() => autoRefresh(), 3600000);
 loadPopular();
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+if ("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(r=>r.update()).catch(()=>{});
+  let recargada=false;
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{ if(!recargada){ recargada=true; location.reload(); } });
+}
 </script>
 </body>
 </html>
