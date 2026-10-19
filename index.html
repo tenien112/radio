@@ -75,10 +75,7 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
 .msg{color:var(--muted);font-size:.9rem;min-height:1.2em;margin-bottom:10px}
 @media (prefers-reduced-motion:reduce){.needle{transition:none}}
 .spoti{display:block;width:100%;margin:-10px 0 26px;padding:13px;border-radius:10px;border:0;background:#1DB954;color:#0b2a16;font:inherit;font-weight:700;font-size:1rem;cursor:pointer}
-.hablar{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);padding:18px;border-radius:16px;border:0;background:var(--accent);color:#fff;font:inherit;font-weight:800;font-size:1.15rem;box-shadow:0 8px 28px rgba(0,0,0,.55);cursor:pointer;z-index:40}
-.hablar[hidden]{display:none}
 .refrescar{display:block;width:100%;margin:-4px 0 12px;padding:11px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text);font:inherit;font-weight:600;cursor:pointer}
-body.sonando .wrap{padding-bottom:90px}
 .copy{margin:32px 0 8px;padding-top:14px;border-top:1px solid var(--line);text-align:center;font-size:13px;color:var(--muted)}
 </style>
 </head>
@@ -127,7 +124,6 @@ body.sonando .wrap{padding-bottom:90px}
 
 <div class="sheet" id="sheet" hidden><div class="sheet-box"><div class="sheet-title" id="sheetTitle"></div><div id="sheetBtns"></div></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<button type="button" class="hablar" id="hablar" hidden>⏸ PAUSAR PARA HABLAR</button>
 <audio id="audio" preload="none"></audio>
 
 <script>
@@ -607,10 +603,8 @@ $("play").onclick = () => {
   if (audio.paused){ wantPlay = true; interrupted = false; markSelf(); audio.src = current.url_resolved; audio.play().then(()=>setMsg("")).catch(()=>setMsg("Esta emisora no responde. Prueba otra.")); }  // reconecta en directo
   else { wantPlay = false; interrupted = false; releaseBack(); markSelf(); audio.pause(); audio.removeAttribute("src"); audio.load(); }
 };
-audio.onplaying = () => { if (audio.src.startsWith("data:")) return; $("play").textContent = "❚❚"; $("play").ariaLabel = "Pausar"; $("hablar").hidden = false; document.body.classList.add("sonando"); };
-audio.onpause = audio.onemptied = () => { if (audio.src.startsWith("data:")) return; $("play").textContent = "▶"; $("play").ariaLabel = "Reproducir"; $("hablar").hidden = true; document.body.classList.remove("sonando"); };
-// Botón grande para callar la radio de un toque antes de dictar o mandar un audio. Se vuelve a poner con ▶.
-$("hablar").onclick = () => { wantPlay = false; interrupted = false; releaseBack(); markSelf(); audio.pause(); audio.removeAttribute("src"); audio.load(); $("hablar").hidden = true; };
+audio.onplaying = () => { if (audio.src.startsWith("data:")) return; $("play").textContent = "❚❚"; $("play").ariaLabel = "Pausar"; };
+audio.onpause = audio.onemptied = () => { if (audio.src.startsWith("data:")) return; $("play").textContent = "▶"; $("play").ariaLabel = "Reproducir"; };
 $("vol").oninput = e => { audio.volume = e.target.value; store("radio_vol", audio.volume); };
 
 // El mensaje sale también flotando abajo de la pantalla, para verlo estés donde estés
@@ -708,7 +702,7 @@ if (APK){
 } else if (/android/i.test(navigator.userAgent)) $("apk").hidden = false;
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.10.20-1";
+const APP_VERSION = "2026.10.20-2";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
