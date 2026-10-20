@@ -23,7 +23,7 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh}
 .wrap{max-width:560px;margin:0 auto;padding:28px 18px 60px}
-h1{font-size:clamp(1.9rem,8.5vw,3.4rem);font-weight:800;letter-spacing:-.04em;line-height:.9;margin:-28px -18px 22px;padding:22px 18px;background:#4995ED;color:#fff}
+h1{position:relative;font-size:clamp(1.9rem,8.5vw,3.4rem);font-weight:800;letter-spacing:-.04em;line-height:.9;margin:-28px -18px 22px;padding:22px 64px 22px 18px;background:var(--cab,#4995ED);color:#fff}
 button,input{font-family:inherit}
 button:focus-visible,input:focus-visible{outline:3px solid var(--warm);outline-offset:2px}
 
@@ -46,9 +46,9 @@ input[type=range]{flex:1;accent-color:var(--accent)}
 h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:26px}
 .st{display:flex;align-items:center;gap:8px;text-align:left;padding:12px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:10px;cursor:pointer;font-size:.95rem}
-.st:hover{border-color:#2F6FC0}
+.st:hover{border-color:var(--osc,#2F6FC0)}
 .st .del{color:#fff}
-.st.on{border-color:#1F4E8C;background:#2F6FC0;color:#fff;box-shadow:inset 0 0 0 2px #fff}
+.st.on{border-color:var(--osc2,#1F4E8C);background:var(--osc,#2F6FC0);color:#fff;box-shadow:inset 0 0 0 2px #fff}
 .st.on .del{color:#fff}
 .st img{width:24px;height:24px;border-radius:5px;object-fit:cover;flex:none}
 .st .fav{margin-left:auto;color:var(--warm);background:none;border:0;cursor:pointer;font-size:1.1rem;padding:0 2px}
@@ -90,13 +90,40 @@ html.clasico .st .del{color:var(--muted)}
 html.clasico .search button{background:var(--text);color:var(--bg)}
 html.clasico .refrescar{border:1px solid var(--line);background:transparent;color:var(--text)}
 html.clasico .toast,html.clasico .sheet,html.clasico .st.drag{--sombra:.55}
-.tema{display:block;margin:-16px auto 26px;padding:7px 14px;border-radius:999px;border:1px solid var(--accent);background:var(--surface);color:var(--accent);font:inherit;font-size:.85rem;font-weight:700;cursor:pointer}
+.tema{position:absolute;right:18px;top:50%;transform:translateY(-50%);width:32px;height:32px;padding:0;border-radius:8px;border:2px solid #fff;background:var(--accent);cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+html.clasico .tema{right:0;border-color:var(--text)}
+.sheet .colores{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:12px;margin:0 4px 14px}
+.sheet .colores button.sw{width:100%;aspect-ratio:1;margin:0;padding:0;border-radius:12px;border:3px solid transparent;color:#fff;font-size:1.3rem;font-weight:800;text-align:center}
+.sheet .colores button.sw.on{border-color:var(--text)}
 </style>
-<script>try{ if(JSON.parse(localStorage.getItem("radio_tema"))==="clasico") document.documentElement.classList.add("clasico"); }catch(e){}</script>
+<script>
+// Color de la app. El azul original (#4995ED) es siempre el primero y el de por defecto.
+const COLORES=[["#4995ED","Azul"],["#3F51B5","Índigo"],["#7E57C2","Morado"],["#9C27B0","Violeta"],["#E91E63","Rosa"],["#E53935","Rojo"],["#F4511E","Naranja"],["#FB8C00","Mandarina"],["#795548","Marrón"],["#43A047","Verde"],["#00897B","Turquesa"],["#00ACC1","Cian"],["#546E7A","Gris"],["clasico","Clásico"]];
+function aplicaColor(c){
+  const h=document.documentElement, st=h.style;
+  ["--accent","--cab","--osc","--osc2","--surface","--line"].forEach(v=>st.removeProperty(v));
+  h.classList.toggle("clasico", c==="clasico");
+  if(c && c!=="clasico" && c!=="#4995ED"){
+    st.setProperty("--accent",c); st.setProperty("--cab",c);
+    st.setProperty("--osc","color-mix(in srgb,"+c+" 78%,#000)");
+    st.setProperty("--osc2","color-mix(in srgb,"+c+" 58%,#000)");
+    st.setProperty("--surface","color-mix(in srgb,"+c+" 7%,#fff)");
+    st.setProperty("--line","color-mix(in srgb,"+c+" 22%,#fff)");
+  }
+  const m=document.querySelector('meta[name="theme-color"]');
+  if(m) m.content = c==="clasico" ? "#2B0F2E" : (c||"#4995ED");
+}
+function colorGuardado(){
+  try{ const c=JSON.parse(localStorage.getItem("radio_color")); if(c) return c;
+       if(JSON.parse(localStorage.getItem("radio_tema"))==="clasico") return "clasico"; }catch(e){}
+  return "#4995ED";
+}
+aplicaColor(colorGuardado());
+</script>
 </head>
 <body>
 <div class="wrap">
-  <h1>RADIO-LORENZITO</h1>
+  <h1>RADIO-LORENZITO<button type="button" class="tema" id="tema" aria-label="Cambiar color de la app"></button></h1>
   <button type="button" class="install" id="install" hidden>📲 Instalar RADIO-LORENZITO en el móvil</button>
 
   <div class="dial" aria-hidden="true">
@@ -117,7 +144,13 @@ html.clasico .toast,html.clasico .sheet,html.clasico .st.drag{--sombra:.55}
   </div>
   <button type="button" class="spoti" id="spoti">🎧 Mis canciones de Spotify</button>
   <button type="button" class="refrescar" id="refrescar">🔄 Actualizar emisoras</button>
-  <button type="button" class="tema" id="tema">🎨 Cambiar tono</button>
+  <div class="sheet" id="sheetColor" hidden>
+    <div class="sheet-box">
+      <div class="sheet-title">Color de la app</div>
+      <div class="colores" id="colores"></div>
+      <button type="button" id="colorAzul">Volver al azul original</button>
+    </div>
+  </div>
 
   <h2>Emisoras</h2>
   <p class="hint">Mantén pulsada una emisora y arrástrala para ponerla donde quieras.</p>
@@ -718,7 +751,7 @@ if (APK){
 } else if (/android/i.test(navigator.userAgent)) $("apk").hidden = false;
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.10.20-12";
+const APP_VERSION = "2026.10.20-13";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
@@ -766,18 +799,22 @@ if ("serviceWorker" in navigator){
   let recargada=false;
   navigator.serviceWorker.addEventListener("controllerchange",()=>{ if(!recargada){ recargada=true; location.reload(); } });
 }
-// Botón para cambiar entre los colores azules y los de antes (morado y rosa). Se queda guardado.
+// Cuadradito de color: abre la gama de colores y guarda el elegido.
 (function(){
-  const b=document.getElementById("tema"), meta=document.querySelector('meta[name="theme-color"]');
+  const sh=document.getElementById("sheetColor"), g=document.getElementById("colores");
+  function elige(c){ store("radio_color",c); aplicaColor(c); sh.hidden=true; }
   function pinta(){
-    const c=document.documentElement.classList.contains("clasico");
-    if(meta) meta.content = c ? "#2B0F2E" : "#4995ED";
+    const act=colorGuardado(); g.innerHTML="";
+    COLORES.forEach(([c,n])=>{
+      const b=document.createElement("button"); b.type="button"; b.className="sw"+(c===act?" on":""); b.title=n; b.setAttribute("aria-label",n);
+      b.style.background = c==="clasico" ? "linear-gradient(135deg,#2B0F2E 50%,#FF4FA3 50%)" : c;
+      if(c===act) b.textContent="✓";
+      b.onclick=()=>elige(c); g.appendChild(b);
+    });
   }
-  b.addEventListener("click",()=>{
-    const c=document.documentElement.classList.toggle("clasico");
-    store("radio_tema", c ? "clasico" : "azul"); pinta();
-  });
-  pinta();
+  document.getElementById("tema").addEventListener("click",()=>{ pinta(); sh.hidden=false; });
+  document.getElementById("colorAzul").onclick=()=>elige("#4995ED");
+  sh.addEventListener("click",e=>{ if(e.target===sh) sh.hidden=true; });
 })();
 // Al abrir o volver a la app, mira si hay versión nueva en internet y, si la hay, recarga en el momento.
 async function buscarVersionNueva(){
