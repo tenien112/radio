@@ -23,7 +23,7 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh}
 .wrap{max-width:560px;margin:0 auto;padding:28px 18px 60px}
-h1{position:relative;font-size:clamp(1.9rem,8.5vw,3.4rem);font-weight:800;letter-spacing:-.04em;line-height:.9;margin:-28px -18px 22px;padding:22px 64px 22px 18px;background:var(--cab,#4995ED);color:#fff}
+h1{position:relative;font-size:clamp(1.9rem,8.5vw,3.4rem);font-weight:800;letter-spacing:-.04em;line-height:.9;margin:-28px -18px 22px;padding:22px 100px 22px 18px;background:var(--cab,#4995ED);color:#fff}
 button,input{font-family:inherit}
 button:focus-visible,input:focus-visible{outline:3px solid var(--warm);outline-offset:2px}
 
@@ -79,6 +79,11 @@ h2{font-size:1.1rem;font-weight:600;margin:0 0 10px;color:var(--muted)}
 .spoti{display:block;width:100%;margin:-10px 0 10px;padding:13px;border-radius:10px;border:0;background:#1DB954;color:#0b2a16;font:inherit;font-weight:700;font-size:1rem;cursor:pointer}
 .refrescar{display:block;width:100%;margin:0 0 26px;padding:11px;border-radius:10px;border:0;background:var(--accent);color:#fff;font:inherit;font-weight:600;cursor:pointer}
 .copy{margin:32px 0 8px;padding-top:14px;border-top:1px solid var(--line);text-align:center;font-size:13px;color:var(--muted)}
+/* Modo oscuro */
+html.oscuro{--bg:#121417;--surface:#1C2129;--line:#2C333D;--text:#ECEFF3;--muted:#9AA3AD;color-scheme:dark}
+html.oscuro .sheet{background:rgba(0,0,0,.55)}
+.modo{position:absolute;right:52px;top:50%;transform:translateY(-50%);width:26px;height:26px;padding:0;border-radius:6px;border:2px solid #fff;background:rgba(0,0,0,.18);color:#fff;font-size:14px;line-height:1;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+html.clasico .modo{right:34px;border-color:var(--text)}
 /* Colores de antes (morado y rosa), se activan con el botón de colores */
 html.clasico{--bg:#2B0F2E;--surface:#3D1A42;--line:#5A2E60;--text:#F7EAF3;--muted:#B89AB5;--accent:#FF4FA3}
 html.clasico h1{margin:0 0 22px;padding:0;background:none;color:var(--text)}
@@ -107,8 +112,9 @@ function aplicaColor(c){
     st.setProperty("--accent",c); st.setProperty("--cab",c);
     st.setProperty("--osc","color-mix(in srgb,"+c+" 78%,#000)");
     st.setProperty("--osc2","color-mix(in srgb,"+c+" 58%,#000)");
-    st.setProperty("--surface","color-mix(in srgb,"+c+" 7%,#fff)");
-    st.setProperty("--line","color-mix(in srgb,"+c+" 22%,#fff)");
+    const base = h.classList.contains("oscuro") ? "#15181c" : "#fff";
+    st.setProperty("--surface","color-mix(in srgb,"+c+(base==="#fff"?" 7%,":" 12%,")+base+")");
+    st.setProperty("--line","color-mix(in srgb,"+c+(base==="#fff"?" 22%,":" 30%,")+base+")");
   }
   const m=document.querySelector('meta[name="theme-color"]');
   if(m) m.content = c==="clasico" ? "#2B0F2E" : (c||"#4995ED");
@@ -118,12 +124,14 @@ function colorGuardado(){
        if(JSON.parse(localStorage.getItem("radio_tema"))==="clasico") return "clasico"; }catch(e){}
   return "#4995ED";
 }
+function oscuroGuardado(){ try{ return JSON.parse(localStorage.getItem("radio_oscuro"))===true; }catch(e){ return false; } }
+document.documentElement.classList.toggle("oscuro", oscuroGuardado());
 aplicaColor(colorGuardado());
 </script>
 </head>
 <body>
 <div class="wrap">
-  <h1>RADIO-LORENZITO<button type="button" class="tema" id="tema" aria-label="Cambiar color de la app"></button></h1>
+  <h1>RADIO-LORENZITO<button type="button" class="modo" id="modo"></button><button type="button" class="tema" id="tema" aria-label="Cambiar color de la app"></button></h1>
   <button type="button" class="install" id="install" hidden>📲 Instalar RADIO-LORENZITO en el móvil</button>
 
   <div class="dial" aria-hidden="true">
@@ -751,7 +759,7 @@ if (APK){
 } else if (/android/i.test(navigator.userAgent)) $("apk").hidden = false;
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.10.20-15";
+const APP_VERSION = "2026.10.22-1";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
@@ -813,6 +821,14 @@ if ("serviceWorker" in navigator){
     });
   }
   document.getElementById("tema").addEventListener("click",()=>{ pinta(); sh.hidden=false; });
+  // Botón modo oscuro / modo de día
+  const bm=document.getElementById("modo");
+  function pintaModo(){ const o=document.documentElement.classList.contains("oscuro");
+    bm.textContent = o ? "☀️" : "🌙";
+    bm.title = bm.ariaLabel = o ? "Modo de día" : "Modo oscuro"; }
+  bm.addEventListener("click",()=>{ const o=!document.documentElement.classList.contains("oscuro");
+    document.documentElement.classList.toggle("oscuro",o); store("radio_oscuro",o); aplicaColor(colorGuardado()); pintaModo(); });
+  pintaModo();
   document.getElementById("colorAzul").onclick=()=>elige("#4995ED");
   sh.addEventListener("click",e=>{ if(e.target===sh) sh.hidden=true; });
 })();
