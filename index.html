@@ -184,7 +184,20 @@ aplicaColor(colorGuardado());
 <audio id="audio" preload="none"></audio>
 
 <script>
-const PRESETS = ["Kiss FM","Cadena 100","Los 40","Europa FM","Cadena Dial","Rock FM","Cadena SER","COPE","Radio Nacional","Onda Cero","Hit FM","Loca FM"];
+const PRESETS = ["Kiss FM","Cadena 100","Los 40","Europa FM","Cadena Dial","Rock FM","Cadena SER","COPE","Radio Nacional","Onda Cero","Onda Cero Cartagena","Onda Cero Murcia","Hit FM","Loca FM"];
+// Señales oficiales directas (de la propia cadena). Se prueban antes que las del directorio.
+// Las locales de Onda Cero solo emiten en HLS, por eso el directorio no las daba.
+const ATRES = "https://radio-atres-live.ondacero.es/api/livestream-redirect/";
+const LOGO_OC = "https://graph.facebook.com/ondacero/picture?width=200&height=200";
+const ofi = (name, mount, logo) => [
+  {stationuuid:"ofi-"+mount, name, url_resolved: ATRES+mount+".aac", favicon: logo||LOGO_OC, country:"Spain", codec:"AAC"},
+  {stationuuid:"ofi-"+mount+"-hls", name, url_resolved: ATRES+mount+".m3u8", favicon: logo||LOGO_OC, country:"Spain", codec:"AAC"}];
+const OFICIALES = {
+  "Onda Cero": ofi("Onda Cero", "OCAAC"),
+  "Onda Cero Cartagena": ofi("Onda Cero Cartagena", "OC_CARTAGENAAAC", "https://graph.facebook.com/ondacerocartagena/picture?width=200&height=200"),
+  "Onda Cero Murcia": ofi("Onda Cero Murcia", "OC_MURCIAAAC", "https://graph.facebook.com/ondaceromurcia/picture?width=200&height=200"),
+  "Europa FM": ofi("Europa FM", "EFMAAC", "https://graph.facebook.com/tueuropafm/picture?width=200&height=200"),
+};
 // Otros nombres con los que aparecen en el directorio
 const ALIAS = {"Radio Nacional": ["RNE"]};
 // Servidores del directorio de emisoras. La lista buena se descarga sola cada día; estos son de reserva.
@@ -237,7 +250,7 @@ async function api(path){
   throw new Error("sin conexión");
 }
 const norm = s => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-const usable = s => s && s.url_resolved && !s.hls && s.lastcheckok !== 0;
+const usable = s => s && s.url_resolved && s.lastcheckok !== 0;
 // La página va por https: las emisiones http se piden por https (el navegador bloquea las http)
 const fixUrl = s => (secure && s.url_resolved.startsWith("http:")) ? {...s, url_resolved: "https:" + s.url_resolved.slice(5)} : s;
 function tidy(lists){  // quita repetidas y caídas; primero las que ya van por https
@@ -247,7 +260,8 @@ function tidy(lists){  // quita repetidas y caídas; primero las que ya van por 
     seen.add(s.stationuuid);
     (secure && s.url_resolved.startsWith("http:") ? http : ok).push(s);
   }
-  return [...ok, ...http.map(fixUrl)];
+  const hlsLast = l => [...l.filter(s => !s.hls), ...l.filter(s => s.hls)];  // las HLS (p. ej. Onda Cero locales) van detrás
+  return hlsLast([...ok, ...http.map(fixUrl)]);
 }
 async function search(q, country, limit = 60){
   const base = {limit: String(limit), hidebroken: "true", order: "clickcount", reverse: "true"};
@@ -264,6 +278,12 @@ async function search(q, country, limit = 60){
 }
 // Señales de una emisora fija. Se guardan un día para que suene al momento, y se renuevan solas.
 async function presetList(name, fresh){
+  const ofl = OFICIALES[name] || [];
+  try{ const r = await presetDir(name, fresh); return {list: [...ofl, ...r.list.filter(s => !ofl.some(o => o.url_resolved === s.url_resolved))].slice(0, 10), cached: r.cached}; }
+  catch(e){ if (ofl.length) return {list: ofl, cached: false}; throw e; }
+}
+async function presetDir(name, fresh){
+  if (OFICIALES[name] && name !== "Onda Cero" && name !== "Europa FM") return {list: [], cached: false};  // locales: solo señal oficial
   const c = presetCache[name];
   if (!fresh && c && c.list?.length && Date.now() - c.t < 86400000) return {list: c.list, cached: true};
   const qs = [name, ...(ALIAS[name] || [])];
@@ -759,7 +779,7 @@ if (APK){
 } else if (/android/i.test(navigator.userAgent)) $("apk").hidden = false;
 
 // Aviso discreto cuando la app se ha actualizado. Hay que cambiar APP_VERSION en cada actualización.
-const APP_VERSION = "2026.10.22-1";
+const APP_VERSION = "2026.11.06-1";
 let justUpdated = false;
 (() => {
   const prev = store("radio_version");
